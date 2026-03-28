@@ -14,7 +14,12 @@
       "Bash(git add:*)",
       "Bash(ls /Users/john/Projects/rss-reader/backend/package*.json)",
       "Bash(rm -rf /Users/john/Projects/rss-reader/frontend/.git)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(npm run:*)",
+      "Bash(npm audit:*)",
+      "Bash(uv tree:*)",
+      "Bash(git commit:*)",
+      "Bash(gh run:*)"
     ]
   },
   "hooks": {
@@ -24,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); if echo \"$f\" | grep -q '/rss-reader/backend/' && ! echo \"$f\" | grep -qE '/rss-reader/backend/(tests/|\\.venv/)'; then cd /Users/john/Projects/rss-reader/backend && uv run pytest tests/ -q; elif echo \"$f\" | grep -q '/rss-reader/frontend/src/'; then cd /Users/john/Projects/rss-reader/frontend && npm test; fi",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); if echo \"$f\" | grep -q '/rss-reader/backend/' && ! echo \"$f\" | grep -qE '/rss-reader/backend/(\\.venv/)'; then cd /Users/john/Projects/rss-reader/backend && uv run ruff check . && uv run pytest tests/ -q; elif echo \"$f\" | grep -q '/rss-reader/frontend/' && ! echo \"$f\" | grep -qE '/rss-reader/frontend/(node_modules|coverage|dist)/'; then cd /Users/john/Projects/rss-reader/frontend && npm run lint && npm test; fi",
             "timeout": 120,
             "statusMessage": "Running tests..."
           }

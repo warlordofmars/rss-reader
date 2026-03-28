@@ -13,7 +13,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
 
   useEffect(() => {
     api.getFeeds().then(setFeeds).catch(console.error)
-  }, [])
+  }, [setFeeds])
 
   const handleFeedAdded = (feed) => {
     setFeeds((prev) => [...prev, { ...feed, unread_count: 0 }])

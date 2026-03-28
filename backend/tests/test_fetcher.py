@@ -1,9 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from fetcher import _get_content, _parse_date, fetch_all_feeds, fetch_feed
-
 
 # ── Unit tests for helper functions ──────────────────────────────────────────
 

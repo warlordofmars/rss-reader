@@ -11,7 +11,7 @@ def _parse_date(entry) -> datetime:
         if val:
             try:
                 return datetime(*val[:6])
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
     return datetime.utcnow()
 
@@ -72,5 +72,5 @@ def fetch_all_feeds() -> None:
     for feed_id in feed_ids:
         try:
             fetch_feed(feed_id)
-        except Exception:
+        except Exception:  # noqa: S110
             pass
