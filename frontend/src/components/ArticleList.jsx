@@ -26,7 +26,7 @@ export default function ArticleList({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    setLoading(true)
+    setLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     api
       .getArticles({ feedId: selectedFeedId, keyword, unreadOnly })
       .then((data) => {
@@ -35,7 +35,7 @@ export default function ArticleList({
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [selectedFeedId, keyword, unreadOnly])
+  }, [selectedFeedId, keyword, unreadOnly, onArticlesLoaded])
 
   const handleSelect = (article) => {
     onSelectArticle(article)

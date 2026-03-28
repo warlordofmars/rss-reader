@@ -15,7 +15,7 @@ export default function App() {
     if (urlToken) {
       localStorage.setItem("token", urlToken)
       window.history.replaceState({}, "", "/")
-      setToken(urlToken)
+      setToken(urlToken) // eslint-disable-line react-hooks/set-state-in-effect
     } else {
       const stored = localStorage.getItem("token")
       if (stored) setToken(stored)
