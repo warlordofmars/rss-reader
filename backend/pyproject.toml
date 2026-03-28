@@ -1,0 +1,22 @@
+[project]
+name = "rss-reader-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]",
+    "sqlalchemy",
+    "feedparser",
+    "apscheduler",
+    "authlib",
+    "httpx",
+    "python-dotenv",
+    "python-jose[cryptography]",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov>=7.1.0",
+]
+
