@@ -69,29 +69,29 @@ describe("api", () => {
     localStorage.setItem("token", "tok")
     mockFetch.mockReturnValue(mockResponse(null, 204))
 
-    await api.deleteFeed(42)
+    await api.deleteFeed("feed-uuid-123")
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/feeds/42",
+      "http://localhost:8000/feeds/feed-uuid-123",
       expect.objectContaining({ method: "DELETE" })
     )
   })
 
   it("getArticles builds query string correctly", async () => {
     localStorage.setItem("token", "tok")
-    mockFetch.mockReturnValue(mockResponse([]))
+    mockFetch.mockReturnValue(mockResponse({ items: [], next_cursor: null }))
 
-    await api.getArticles({ feedId: 5, keyword: "python", unreadOnly: true })
+    await api.getArticles({ feedId: "feed-uuid-5", keyword: "python", unreadOnly: true })
 
     const url = mockFetch.mock.calls[0][0]
-    expect(url).toContain("feed_id=5")
+    expect(url).toContain("feed_id=feed-uuid-5")
     expect(url).toContain("keyword=python")
     expect(url).toContain("unread_only=true")
   })
 
   it("getArticles with no params fetches all articles", async () => {
     localStorage.setItem("token", "tok")
-    mockFetch.mockReturnValue(mockResponse([]))
+    mockFetch.mockReturnValue(mockResponse({ items: [], next_cursor: null }))
 
     await api.getArticles()
 
@@ -99,38 +99,48 @@ describe("api", () => {
     expect(url).toBe("http://localhost:8000/articles?")
   })
 
+  it("getArticles includes cursor in query string", async () => {
+    localStorage.setItem("token", "tok")
+    mockFetch.mockReturnValue(mockResponse({ items: [], next_cursor: null }))
+
+    await api.getArticles({ cursor: "abc123" })
+
+    const url = mockFetch.mock.calls[0][0]
+    expect(url).toContain("cursor=abc123")
+  })
+
   it("refreshFeed sends POST request", async () => {
     localStorage.setItem("token", "tok")
     mockFetch.mockReturnValue(mockResponse({ status: "refreshing" }))
 
-    await api.refreshFeed(7)
+    await api.refreshFeed("feed-uuid-7")
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/feeds/7/refresh",
+      "http://localhost:8000/feeds/feed-uuid-7/refresh",
       expect.objectContaining({ method: "POST" })
     )
   })
 
   it("markRead sends PATCH to read endpoint", async () => {
     localStorage.setItem("token", "tok")
-    mockFetch.mockReturnValue(mockResponse({ id: 3, is_read: true }))
+    mockFetch.mockReturnValue(mockResponse({ id: "opaque-id", is_read: true }))
 
-    await api.markRead(3)
+    await api.markRead("opaque-id")
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/articles/3/read",
+      "http://localhost:8000/articles/opaque-id/read",
       expect.objectContaining({ method: "PATCH" })
     )
   })
 
   it("markUnread sends PATCH to unread endpoint", async () => {
     localStorage.setItem("token", "tok")
-    mockFetch.mockReturnValue(mockResponse({ id: 3, is_read: false }))
+    mockFetch.mockReturnValue(mockResponse({ id: "opaque-id", is_read: false }))
 
-    await api.markUnread(3)
+    await api.markUnread("opaque-id")
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/articles/3/unread",
+      "http://localhost:8000/articles/opaque-id/unread",
       expect.objectContaining({ method: "PATCH" })
     )
   })

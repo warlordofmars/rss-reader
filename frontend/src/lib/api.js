@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000"
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
 
 function getToken() {
   return localStorage.getItem("token")
@@ -28,11 +28,12 @@ export const api = {
   deleteFeed: (id) => apiFetch(`/feeds/${id}`, { method: "DELETE" }),
   refreshFeed: (id) => apiFetch(`/feeds/${id}/refresh`, { method: "POST" }),
 
-  getArticles: ({ feedId, keyword, unreadOnly } = {}) => {
+  getArticles: ({ feedId, keyword, unreadOnly, cursor } = {}) => {
     const q = new URLSearchParams()
     if (feedId) q.set("feed_id", feedId)
     if (keyword) q.set("keyword", keyword)
     if (unreadOnly) q.set("unread_only", "true")
+    if (cursor) q.set("cursor", cursor)
     return apiFetch(`/articles?${q}`)
   },
   markRead: (id) => apiFetch(`/articles/${id}/read`, { method: "PATCH" }),

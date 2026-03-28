@@ -4,11 +4,12 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]",
-    "sqlalchemy",
     "feedparser",
     "apscheduler",
     "authlib",
+    "boto3",
     "httpx",
+    "mangum",
     "python-dotenv",
     "python-jose[cryptography]",
 ]
@@ -18,6 +19,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov>=7.1.0",
+    "moto[dynamodb,s3]",
     "ruff",
     "pip-audit",
 ]
@@ -36,4 +38,5 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S"]  # asserts and security rules are fine in tests
+"handler.py" = ["I001"]  # late imports are intentional: secrets must load before app imports
 

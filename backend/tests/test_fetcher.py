@@ -6,6 +6,7 @@ from fetcher import _get_content, _parse_date, fetch_all_feeds, fetch_feed
 
 # ── Unit tests for helper functions ──────────────────────────────────────────
 
+
 def test_parse_date_from_published_parsed():
     entry = SimpleNamespace(published_parsed=(2024, 6, 15, 12, 0, 0, 0, 0, 0), updated_parsed=None)
     result = _parse_date(entry)
@@ -27,7 +28,6 @@ def test_parse_date_falls_back_to_utcnow_when_missing():
 
 
 def test_parse_date_skips_invalid_tuple_and_tries_next():
-    # month=13 causes datetime() to raise, should fall through to updated_parsed
     entry = SimpleNamespace(
         published_parsed=(2024, 13, 1, 0, 0, 0),  # invalid month
         updated_parsed=(2024, 3, 1, 8, 30, 0, 0, 0, 0),
@@ -54,7 +54,8 @@ def test_get_content_empty_content_list_falls_back():
     assert _get_content(entry) == "Fallback"
 
 
-# ── Integration test for fetch_feed ──────────────────────────────────────────
+# ── Integration tests for fetch_feed ─────────────────────────────────────────
+
 
 def _make_fake_parsed(title="Test Feed", entries=None):
     if entries is None:
@@ -69,85 +70,104 @@ def _make_fake_parsed(title="Test Feed", entries=None):
                 updated_parsed=None,
             )
         ]
-    # feedparser returns a dict-like object for .feed, so use a plain dict
     return SimpleNamespace(feed={"title": title}, entries=entries)
 
 
-def test_fetch_feed_creates_articles(db, feed, patch_fetcher_session):
+def _feed_dict(user_id, feed):
+    """Build a feed dict as fetch_feed expects."""
+    import db
+
+    raw = db.get_feed_raw(user_id, feed["id"])
+    return raw
+
+
+def test_fetch_feed_creates_articles(aws, feed, user):
+    import db
+
     fake_parsed = _make_fake_parsed()
+    feed_dict = _feed_dict(user["google_id"], feed)
 
     with patch("fetcher.feedparser.parse", return_value=fake_parsed):
-        fetch_feed(feed.id)
+        fetch_feed(feed_dict)
 
-    from db import Article
-    articles = db.query(Article).filter(Article.feed_id == feed.id).all()
-    assert len(articles) == 1
-    assert articles[0].title == "Article One"
-    assert articles[0].guid == "entry-1"
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=100, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 1
+    assert items[0]["title"] == "Article One"
 
 
-def test_fetch_feed_sets_feed_title(db, feed, patch_fetcher_session):
-    feed.title = ""
-    db.commit()
+def test_fetch_feed_sets_feed_title(aws, feed, user):
+    import db
+
+    # Clear the title first
+    db.update_feed_title(user["google_id"], feed["id"], "")
+    feed_dict = _feed_dict(user["google_id"], feed)
+    feed_dict["title"] = ""
 
     with patch("fetcher.feedparser.parse", return_value=_make_fake_parsed(title="My Blog")):
-        fetch_feed(feed.id)
+        fetch_feed(feed_dict)
 
-    db.refresh(feed)
-    assert feed.title == "My Blog"
+    updated = db.get_feed(user["google_id"], feed["id"])
+    assert updated["title"] == "My Blog"
 
 
-def test_fetch_feed_skips_duplicate_guids(db, feed, patch_fetcher_session):
+def test_fetch_feed_skips_duplicate_guids(aws, feed, user):
+    import db
+
     fake_parsed = _make_fake_parsed()
+    feed_dict = _feed_dict(user["google_id"], feed)
 
     with patch("fetcher.feedparser.parse", return_value=fake_parsed):
-        fetch_feed(feed.id)
-        fetch_feed(feed.id)  # second call — same entry
+        fetch_feed(feed_dict)
+        fetch_feed(feed_dict)  # second call — same entry
 
-    from db import Article
-    articles = db.query(Article).filter(Article.feed_id == feed.id).all()
-    assert len(articles) == 1
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=100, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 1
 
 
-def test_fetch_feed_ignores_missing_feed_id(patch_fetcher_session):
-    # Should not raise even if the feed doesn't exist
-    with patch("fetcher.feedparser.parse") as mock_parse:
-        fetch_feed(99999)
-        mock_parse.assert_not_called()
+def test_fetch_feed_increments_unread_count(aws, feed, user):
+    import db
+
+    fake_parsed = _make_fake_parsed()
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        fetch_feed(feed_dict)
+
+    feeds = db.list_feeds(user["google_id"])
+    assert feeds[0]["unread_count"] == 1
 
 
 # ── fetch_all_feeds ───────────────────────────────────────────────────────────
 
-def test_fetch_all_feeds_calls_fetch_feed_for_each(db, user, patch_fetcher_session):
-    from db import Feed
 
-    f1 = Feed(user_id=user.id, url="https://a.com/rss", title="A")
-    f2 = Feed(user_id=user.id, url="https://b.com/rss", title="B")
-    db.add_all([f1, f2])
-    db.commit()
-    db.refresh(f1)
-    db.refresh(f2)
+def test_fetch_all_feeds_calls_fetch_feed_for_each(aws, user):
+    import db
+
+    f1 = db.create_feed(user["google_id"], "https://a.com/rss", title="A")
+    f2 = db.create_feed(user["google_id"], "https://b.com/rss", title="B")
 
     with patch("fetcher.fetch_feed") as mock_fetch:
         fetch_all_feeds()
 
-    called_ids = {call.args[0] for call in mock_fetch.call_args_list}
-    assert called_ids == {f1.id, f2.id}
+    called_urls = {call.args[0]["url"] for call in mock_fetch.call_args_list}
+    assert called_urls == {f1["url"], f2["url"]}
 
 
-def test_fetch_all_feeds_swallows_per_feed_exceptions(db, user, patch_fetcher_session):
-    from db import Feed
+def test_fetch_all_feeds_swallows_per_feed_exceptions(aws, user):
+    import db
 
-    f1 = Feed(user_id=user.id, url="https://a.com/rss", title="A")
-    f2 = Feed(user_id=user.id, url="https://b.com/rss", title="B")
-    db.add_all([f1, f2])
-    db.commit()
-    db.refresh(f1)
-    db.refresh(f2)
+    db.create_feed(user["google_id"], "https://a.com/rss", title="A")
+    db.create_feed(user["google_id"], "https://b.com/rss", title="B")
 
     call_count = 0
 
-    def raise_on_first(feed_id):
+    def raise_on_first(feed):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -156,4 +176,4 @@ def test_fetch_all_feeds_swallows_per_feed_exceptions(db, user, patch_fetcher_se
     with patch("fetcher.fetch_feed", side_effect=raise_on_first):
         fetch_all_feeds()  # should not raise
 
-    assert call_count == 2  # both feeds were attempted
+    assert call_count == 2

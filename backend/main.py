@@ -12,9 +12,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from db import Article, Feed, User, get_db, init_db
+import db
 from fetcher import fetch_feed
 from scheduler import start_scheduler, stop_scheduler
 
@@ -23,10 +22,14 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    start_scheduler()
+    # DynamoDB table is pre-created via CDK; no init_db() needed.
+    # Skip the scheduler in Lambda — EventBridge handles periodic fetching (Phase 4).
+    in_lambda = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+    if not in_lambda:
+        start_scheduler()
     yield
-    stop_scheduler()
+    if not in_lambda:
+        stop_scheduler()
 
 
 app = FastAPI(title="RSS Reader API", lifespan=lifespan)
@@ -49,12 +52,12 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 security = HTTPBearer()
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Auth helpers ───────────────────────────────────────────────────────────────
 
 
-def create_jwt(user_id: int, email: str) -> str:
+def create_jwt(google_id: str, email: str) -> str:
     payload = {
-        "sub": str(user_id),
+        "sub": google_id,
         "email": email,
         "exp": datetime.now(UTC) + timedelta(days=7),
     }
@@ -63,37 +66,20 @@ def create_jwt(user_id: int, email: str) -> str:
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-) -> User:
+) -> dict:
     try:
-        payload = jwt.decode(
-            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
-        )
-        user_id = int(payload["sub"])
-    except (JWTError, KeyError, ValueError):
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        google_id = payload["sub"]
+    except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.get_user(google_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
-def get_user_article(article_id: int, current_user: User, db: Session) -> Article:
-    user_feed_ids = [
-        row[0] for row in db.query(Feed.id).filter(Feed.user_id == current_user.id).all()
-    ]
-    article = (
-        db.query(Article)
-        .filter(Article.id == article_id, Article.feed_id.in_(user_feed_ids))
-        .first()
-    )
-    if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
-    return article
-
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth routes ────────────────────────────────────────────────────────────────
 
 
 @app.get("/auth/login")
@@ -110,7 +96,7 @@ def auth_login():
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: str, db: Session = Depends(get_db)):
+async def auth_callback(code: str):
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
             "https://oauth2.googleapis.com/token",
@@ -132,33 +118,28 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
         userinfo_resp.raise_for_status()
         info = userinfo_resp.json()
 
-    user = db.query(User).filter(User.google_id == info["sub"]).first()
-    if not user:
-        user = User(
-            google_id=info["sub"],
-            email=info["email"],
-            name=info["name"],
-            picture=info.get("picture", ""),
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    user = db.upsert_user(
+        google_id=info["sub"],
+        email=info["email"],
+        name=info["name"],
+        picture=info.get("picture", ""),
+    )
 
-    token = create_jwt(user.id, user.email)
+    token = create_jwt(user["google_id"], user["email"])
     return RedirectResponse(f"{FRONTEND_URL}?token={token}")
 
 
 @app.get("/auth/me")
-def auth_me(current_user: User = Depends(get_current_user)):
+def auth_me(current_user: dict = Depends(get_current_user)):
     return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "name": current_user.name,
-        "picture": current_user.picture,
+        "id": current_user["google_id"],
+        "email": current_user["email"],
+        "name": current_user["name"],
+        "picture": current_user.get("picture", ""),
     }
 
 
-# ── Feeds ─────────────────────────────────────────────────────────────────────
+# ── Feed routes ────────────────────────────────────────────────────────────────
 
 
 class AddFeedRequest(BaseModel):
@@ -166,151 +147,86 @@ class AddFeedRequest(BaseModel):
 
 
 @app.get("/feeds")
-def list_feeds(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    feeds = db.query(Feed).filter(Feed.user_id == current_user.id).all()
-    return [
-        {
-            "id": f.id,
-            "url": f.url,
-            "title": f.title or f.url,
-            "created_at": f.created_at,
-            "unread_count": db.query(Article)
-            .filter(Article.feed_id == f.id, Article.is_read == False)  # noqa: E712
-            .count(),
-        }
-        for f in feeds
-    ]
+def list_feeds(current_user: dict = Depends(get_current_user)):
+    return db.list_feeds(current_user["google_id"])
 
 
 @app.post("/feeds", status_code=201)
-def add_feed(
-    body: AddFeedRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    existing = (
-        db.query(Feed)
-        .filter(Feed.user_id == current_user.id, Feed.url == body.url)
-        .first()
-    )
-    if existing:
+def add_feed(body: AddFeedRequest, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["google_id"]
+
+    if db.check_feed_url_exists(user_id, body.url):
         raise HTTPException(status_code=409, detail="Feed already added")
 
-    feed = Feed(user_id=current_user.id, url=body.url)
-    db.add(feed)
-    db.commit()
-    db.refresh(feed)
+    feed = db.create_feed(user_id, body.url)
 
-    threading.Thread(target=fetch_feed, args=(feed.id,), daemon=True).start()
+    # Fetch in background using the raw dict (includes all keys fetcher needs)
+    raw = db.get_feed_raw(user_id, feed["id"])
+    if raw:
+        threading.Thread(target=fetch_feed, args=(raw,), daemon=True).start()
 
-    return {"id": feed.id, "url": feed.url, "title": feed.title or feed.url}
+    return feed
 
 
 @app.delete("/feeds/{feed_id}", status_code=204)
-def delete_feed(
-    feed_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    feed = (
-        db.query(Feed)
-        .filter(Feed.id == feed_id, Feed.user_id == current_user.id)
-        .first()
-    )
-    if not feed:
+def delete_feed(feed_id: str, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["google_id"]
+    if not db.get_feed(user_id, feed_id):
         raise HTTPException(status_code=404, detail="Feed not found")
-    db.delete(feed)
-    db.commit()
+    db.delete_feed(user_id, feed_id)
 
 
 @app.post("/feeds/{feed_id}/refresh")
-def refresh_feed(
-    feed_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    feed = (
-        db.query(Feed)
-        .filter(Feed.id == feed_id, Feed.user_id == current_user.id)
-        .first()
-    )
-    if not feed:
+def refresh_feed(feed_id: str, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["google_id"]
+    raw = db.get_feed_raw(user_id, feed_id)
+    if not raw:
         raise HTTPException(status_code=404, detail="Feed not found")
-    threading.Thread(target=fetch_feed, args=(feed.id,), daemon=True).start()
+    threading.Thread(target=fetch_feed, args=(raw,), daemon=True).start()
     return {"status": "refreshing"}
 
 
-# ── Articles ──────────────────────────────────────────────────────────────────
+# ── Article routes ─────────────────────────────────────────────────────────────
 
 
 @app.get("/articles")
 def list_articles(
-    feed_id: int | None = Query(None),
+    feed_id: str | None = Query(None),
     keyword: str | None = Query(None),
     unread_only: bool = Query(False),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    limit: int = Query(25, ge=1, le=100),
+    cursor: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
 ):
-    user_feed_ids = [
-        row[0] for row in db.query(Feed.id).filter(Feed.user_id == current_user.id).all()
-    ]
+    user_id = current_user["google_id"]
 
-    q = db.query(Article).filter(Article.feed_id.in_(user_feed_ids))
+    if feed_id is not None and not db.get_feed(user_id, feed_id):
+        raise HTTPException(status_code=403, detail="Not your feed")
 
-    if feed_id is not None:
-        if feed_id not in user_feed_ids:
-            raise HTTPException(status_code=403, detail="Not your feed")
-        q = q.filter(Article.feed_id == feed_id)
-
-    if keyword:
-        like = f"%{keyword}%"
-        q = q.filter(
-            Article.title.ilike(like)
-            | Article.content.ilike(like)
-            | Article.summary.ilike(like)
-        )
-
-    if unread_only:
-        q = q.filter(Article.is_read == False)  # noqa: E712
-
-    articles = q.order_by(Article.published_at.desc()).limit(200).all()
-
-    return [
-        {
-            "id": a.id,
-            "feed_id": a.feed_id,
-            "title": a.title,
-            "link": a.link,
-            "content": a.content or a.summary,
-            "published_at": a.published_at,
-            "is_read": a.is_read,
-        }
-        for a in articles
-    ]
+    items, next_cursor = db.list_articles(
+        user_id=user_id,
+        feed_id=feed_id,
+        limit=limit,
+        cursor=cursor,
+        unread_only=unread_only,
+        keyword=keyword,
+    )
+    return {"items": items, "next_cursor": next_cursor}
 
 
 @app.patch("/articles/{article_id}/read")
-def mark_read(
-    article_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    article = get_user_article(article_id, current_user, db)
-    article.is_read = True
-    db.commit()
-    return {"id": article.id, "is_read": True}
+def mark_read(article_id: str, current_user: dict = Depends(get_current_user)):
+    feed_id, article_sk = db.decode_article_id(article_id)
+    result = db.mark_article_read(feed_id, article_sk, current_user["google_id"], is_read=True)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return result
 
 
 @app.patch("/articles/{article_id}/unread")
-def mark_unread(
-    article_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    article = get_user_article(article_id, current_user, db)
-    article.is_read = False
-    db.commit()
-    return {"id": article.id, "is_read": False}
+def mark_unread(article_id: str, current_user: dict = Depends(get_current_user)):
+    feed_id, article_sk = db.decode_article_id(article_id)
+    result = db.mark_article_read(feed_id, article_sk, current_user["google_id"], is_read=False)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return result
