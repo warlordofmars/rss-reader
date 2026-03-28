@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
 import { Search } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -24,18 +23,34 @@ export default function ArticleList({
   const [keyword, setKeyword] = useState("")
   const [unreadOnly, setUnreadOnly] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [nextCursor, setNextCursor] = useState(null)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   useEffect(() => {
     setLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     api
       .getArticles({ feedId: selectedFeedId, keyword, unreadOnly })
       .then((data) => {
-        setArticles(data)
-        onArticlesLoaded?.(data)
+        setArticles(data.items)
+        setNextCursor(data.next_cursor)
+        onArticlesLoaded?.(data.items)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [selectedFeedId, keyword, unreadOnly, onArticlesLoaded])
+
+  const handleLoadMore = () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    api
+      .getArticles({ feedId: selectedFeedId, keyword, unreadOnly, cursor: nextCursor })
+      .then((data) => {
+        setArticles((prev) => [...prev, ...data.items])
+        setNextCursor(data.next_cursor)
+      })
+      .catch(console.error)
+      .finally(() => setLoadingMore(false))
+  }
 
   const handleSelect = (article) => {
     onSelectArticle(article)
@@ -103,6 +118,19 @@ export default function ArticleList({
             <p className="text-xs text-muted-foreground mt-1">{formatDate(article.published_at)}</p>
           </button>
         ))}
+        {nextCursor && (
+          <div className="flex justify-center py-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        )}
       </ScrollArea>
     </div>
   )

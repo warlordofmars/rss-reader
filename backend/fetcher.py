@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import feedparser
 
-from db import Article, Feed, SessionLocal
+import db
 
 
 def _parse_date(entry) -> datetime:
@@ -22,55 +22,49 @@ def _get_content(entry) -> str:
     return getattr(entry, "summary", "")
 
 
-def fetch_feed(feed_id: int) -> None:
-    db = SessionLocal()
-    try:
-        feed = db.query(Feed).filter(Feed.id == feed_id).first()
-        if not feed:
-            return
+def fetch_feed(feed: dict) -> None:
+    """
+    Fetch and store new articles for a single feed.
 
-        parsed = feedparser.parse(feed.url)
+    `feed` is the raw dict returned by db.list_all_feeds() or db.get_feed_raw(),
+    which includes feed_id, user_id, url, and title.
+    """
+    feed_id = feed["feed_id"]
+    user_id = feed["user_id"]
+    url = feed["url"]
+    current_title = feed.get("title", "")
 
-        feed_title = parsed.feed.get("title", "")
-        if feed_title and not feed.title:
-            feed.title = feed_title
-            db.commit()
+    parsed = feedparser.parse(url)
 
-        existing_guids = {a.guid for a in feed.articles}
+    feed_title = parsed.feed.get("title", "")
+    if feed_title and not current_title:
+        db.update_feed_title(user_id, feed_id, feed_title)
 
-        new_articles = []
-        for entry in parsed.entries:
-            guid = getattr(entry, "id", None) or getattr(entry, "link", "")
-            if not guid or guid in existing_guids:
-                continue
-            new_articles.append(
-                Article(
-                    feed_id=feed.id,
-                    guid=guid,
-                    title=getattr(entry, "title", ""),
-                    link=getattr(entry, "link", ""),
-                    content=_get_content(entry),
-                    summary=getattr(entry, "summary", ""),
-                    published_at=_parse_date(entry),
-                )
+    for entry in parsed.entries:
+        guid = getattr(entry, "id", None) or getattr(entry, "link", "")
+        if not guid:
+            continue
+        if db.article_guid_exists(feed_id, guid):
+            continue
+        try:
+            db.create_article(
+                feed_id=feed_id,
+                user_id=user_id,
+                guid=guid,
+                title=getattr(entry, "title", ""),
+                link=getattr(entry, "link", ""),
+                content=_get_content(entry),
+                summary=getattr(entry, "summary", ""),
+                published_at=_parse_date(entry),
             )
-
-        if new_articles:
-            db.add_all(new_articles)
-            db.commit()
-    finally:
-        db.close()
+        except Exception:  # noqa: S110
+            pass
 
 
 def fetch_all_feeds() -> None:
-    db = SessionLocal()
-    try:
-        feed_ids = [row[0] for row in db.query(Feed.id).all()]
-    finally:
-        db.close()
-
-    for feed_id in feed_ids:
+    feeds = db.list_all_feeds()
+    for feed in feeds:
         try:
-            fetch_feed(feed_id)
+            fetch_feed(feed)
         except Exception:  # noqa: S110
             pass

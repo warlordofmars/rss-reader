@@ -1,83 +1,105 @@
 from unittest.mock import patch
 
+import boto3
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from moto import mock_aws
 
-from db import Base, Feed, User, get_db
-from main import app, create_jwt
+TABLE_NAME = "rss-reader-test"
+BUCKET_NAME = "rss-reader-content-test"
 
 
-@pytest.fixture()
-def engine():
-    eng = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,  # all sessions share the same in-memory DB
-    )
-    Base.metadata.create_all(bind=eng)
-    yield eng
-    Base.metadata.drop_all(bind=eng)
+# ── AWS / moto bootstrap ──────────────────────────────────────────────────────
 
 
 @pytest.fixture()
-def TestSession(engine):
-    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def aws(monkeypatch):
+    """
+    Activate moto mocks for DynamoDB + S3, create the table and content bucket,
+    and point the app at them via environment variables.
+    """
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("DYNAMODB_TABLE", TABLE_NAME)
+    monkeypatch.setenv("CONTENT_BUCKET", BUCKET_NAME)
+
+    with mock_aws():
+        ddb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = ddb.create_table(
+            TableName=TABLE_NAME,
+            KeySchema=[
+                {"AttributeName": "PK", "KeyType": "HASH"},
+                {"AttributeName": "SK", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "PK", "AttributeType": "S"},
+                {"AttributeName": "SK", "AttributeType": "S"},
+                {"AttributeName": "GSI1PK", "AttributeType": "S"},
+                {"AttributeName": "GSI1SK", "AttributeType": "S"},
+                {"AttributeName": "GSI2PK", "AttributeType": "S"},
+                {"AttributeName": "GSI2SK", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "GSI1",
+                    "KeySchema": [
+                        {"AttributeName": "GSI1PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "GSI2",
+                    "KeySchema": [
+                        {"AttributeName": "GSI2PK", "KeyType": "HASH"},
+                        {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET_NAME)
+
+        yield {"table": table, "s3": s3}
+
+
+# ── App-level fixtures ────────────────────────────────────────────────────────
 
 
 @pytest.fixture()
-def db(TestSession):
-    session = TestSession()
-    yield session
-    session.close()
-
-
-@pytest.fixture()
-def client(TestSession):
-    def override_get_db():
-        s = TestSession()
-        try:
-            yield s
-        finally:
-            s.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
+def client(aws):
     with patch("main.start_scheduler"), patch("main.stop_scheduler"):
+        from main import app
+
         with TestClient(app) as c:
             yield c
 
-    app.dependency_overrides.clear()
+
+# ── Data fixtures ─────────────────────────────────────────────────────────────
 
 
 @pytest.fixture()
-def patch_fetcher_session(TestSession):
-    """Redirect fetcher.SessionLocal to the test DB."""
-    with patch("fetcher.SessionLocal", TestSession):
-        yield
+def user(aws):
+    import db as _db
 
-
-@pytest.fixture()
-def user(db):
-    u = User(google_id="google-123", email="test@example.com", name="Test User", picture="")
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    return u
+    return _db.upsert_user("google-123", "test@example.com", "Test User", "")
 
 
 @pytest.fixture()
 def auth_headers(user):
-    token = create_jwt(user.id, user.email)
+    from main import create_jwt
+
+    token = create_jwt(user["google_id"], user["email"])
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture()
-def feed(db, user):
-    f = Feed(user_id=user.id, url="https://example.com/feed.xml", title="Example Feed")
-    db.add(f)
-    db.commit()
-    db.refresh(f)
-    return f
+def feed(aws, user):
+    import db as _db
+
+    return _db.create_feed(user["google_id"], "https://example.com/feed.xml", title="Example Feed")

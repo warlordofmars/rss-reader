@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   pull_request:
@@ -61,3 +61,66 @@ jobs:
 
       - name: Test
         run: npm test
+
+  infra:
+    name: Infra (lint + synth)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Synth (no-staging skips Docker bundling)
+        run: uv run cdk synth --no-staging -c account=123456789012
+
+  deploy:
+    name: Deploy
+    needs: [backend, frontend, infra]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC token
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: CDK deploy
+        working-directory: infra
+        run: |
+          uv run cdk deploy \
+            --require-approval never \
+            -c account=${{ secrets.AWS_ACCOUNT_ID }}

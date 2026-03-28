@@ -35,3 +35,8 @@ Thumbs.db
 
 # Claude local settings (personal overrides)
 .claude/settings.local.json
+
+# CDK
+cdk.out/
+infra/.venv/
+infra/cdk.context.json
