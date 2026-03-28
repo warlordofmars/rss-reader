@@ -28,7 +28,8 @@ jobs:
         run: uv run ruff check .
 
       - name: Security audit (pip-audit)
-        run: uv run pip-audit
+        # CVE-2026-4539: affects pygments (transitive dep of pip-audit itself), no fix available yet
+        run: uv run pip-audit --ignore-vuln CVE-2026-4539
 
       - name: Test
         run: uv run pytest tests/ -v --tb=short
