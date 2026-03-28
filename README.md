@@ -1,15 +1,18 @@
 # RSS Reader
 
-A full-stack RSS reader with Google OAuth, built with FastAPI and React.
+A full-stack RSS reader with Google OAuth, deployed on AWS.
+
+**Live at [rss.warlordofmars.net](https://rss.warlordofmars.net)**
 
 ## Stack
 
 | Layer | Tech |
-|---|---|
-| Backend | FastAPI, SQLAlchemy (SQLite), feedparser, APScheduler |
+| --- | --- |
+| Backend | FastAPI, boto3/DynamoDB, feedparser, Mangum |
 | Frontend | React, Vite, shadcn/ui, Tailwind CSS |
 | Auth | Google OAuth 2.0 + JWT |
-| Package management | `uv` (Python), `npm` (Node) |
+| Infra | AWS CDK (Python) |
+| CI/CD | GitHub Actions + OIDC |
 
 ## Features
 
@@ -18,7 +21,7 @@ A full-stack RSS reader with Google OAuth, built with FastAPI and React.
 - Articles sorted by date with inline reading view
 - Mark articles as read / unread
 - Keyword filtering across title and content
-- Auto-refresh all feeds every 30 minutes
+- Auto-refresh all feeds every 30 minutes (EventBridge)
 
 ## Project Structure
 
@@ -26,84 +29,117 @@ A full-stack RSS reader with Google OAuth, built with FastAPI and React.
 rss-reader/
 ├── backend/
 │   ├── main.py          # FastAPI app, routes, auth
-│   ├── db.py            # SQLAlchemy models (User, Feed, Article)
+│   ├── db.py            # DynamoDB single-table data layer
 │   ├── fetcher.py       # feedparser-based article ingestion
-│   ├── scheduler.py     # APScheduler 30-min refresh job
-│   ├── pyproject.toml   # Python deps (managed by uv)
-│   └── .env.example     # Required environment variables
-└── frontend/
-    ├── src/
-    │   ├── App.jsx
-    │   ├── lib/api.js   # API client
-    │   └── components/  # Layout, FeedSidebar, ArticleList, ArticleView, …
-    └── package.json
+│   ├── handler.py       # Lambda entry point (Mangum)
+│   ├── scheduler.py     # APScheduler (local dev only)
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── lib/api.js   # API client
+│   │   └── components/
+│   └── package.json
+├── infra/
+│   └── stacks/
+│       └── rss_reader_stack.py   # CDK stack
+└── tasks.py             # Invoke task runner
 ```
 
-## Getting Started
+## Getting Started (local dev)
 
-### 1. Google OAuth credentials
+### Prerequisites
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com) and create a project
-2. Navigate to **APIs & Services → OAuth consent screen** and configure it
-3. Go to **Credentials → Create Credentials → OAuth client ID** (Web application)
-4. Add `http://localhost:8000/auth/callback` as an authorised redirect URI
-5. Copy the Client ID and Client Secret
+- Python 3.11+ with [uv](https://astral.sh/uv)
+- Node.js 20+
+- AWS credentials configured (`~/.aws`) with access to the deployed stack
 
-### 2. Backend
+### 1. Install dependencies
 
 ```bash
-cd backend
-
-# Install uv if you haven't already
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install dependencies
-uv sync
-
-# Create your .env
-cp .env.example .env
-# Edit .env and fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET
-
-# Start the dev server
-uv run uvicorn main:app --reload
+uv sync          # root invoke tasks
+cd backend && uv sync
+cd frontend && npm install
 ```
 
-The API will be available at `http://localhost:8000`.
-
-### 3. Frontend
+### 2. Configure environment
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cp backend/.env.example backend/.env
+# Fill in: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET,
+#          DYNAMODB_TABLE, CONTENT_BUCKET (from CloudFormation outputs)
 ```
 
-The app will be available at `http://localhost:5173`.
+Get the table and bucket names:
+```bash
+uv run inv outputs
+```
 
-## Running Tests
+### 3. Add OAuth redirect URI
 
-### Backend
+In [Google Cloud Console](https://console.cloud.google.com) → your OAuth app → **Authorized redirect URIs**, add:
+
+```text
+http://localhost:8000/auth/callback
+```
+
+### 4. Start the app
 
 ```bash
-cd backend
-uv run pytest tests/ -v
+uv run inv dev
 ```
 
-### Frontend
+Backend at `http://localhost:8000`, frontend at `http://localhost:5173`.
+
+## Tasks
+
+All common operations are available via `invoke`:
 
 ```bash
-cd frontend
-npm test
+uv run inv --list          # show all tasks
+uv run inv dev             # start backend + frontend locally
+uv run inv lint            # lint everything
+uv run inv test            # run all tests
+uv run inv deploy          # deploy to AWS
+uv run inv outputs         # show CloudFormation stack outputs
+uv run inv logs            # tail Lambda CloudWatch logs
+uv run inv clean           # remove build artifacts
 ```
 
-Tests run automatically after every file change via a Claude Code hook.
+Sub-tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`, `test-frontend`, `synth`.
+
+## Deployment
+
+First-time setup:
+
+```bash
+# 1. Bootstrap CDK (once per account/region)
+cd infra && uv run cdk bootstrap -c account=<account-id>
+
+# 2. Deploy
+uv run inv deploy
+
+# 3. Populate secrets
+aws secretsmanager put-secret-value \
+  --secret-id <AppSecretArn from outputs> \
+  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"..."}'
+
+# 4. Add GitHub secrets for CI/CD
+#    AWS_DEPLOY_ROLE_ARN  →  GitHubActionsDeployRoleArn output
+#    AWS_ACCOUNT_ID       →  your 12-digit account ID
+```
+
+After that, every push to `main` deploys automatically.
 
 ## Environment Variables
 
 | Variable | Description |
-|---|---|
+| --- | --- |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `JWT_SECRET` | Secret key for signing JWTs (use a long random string) |
+| `JWT_SECRET` | Secret key for signing JWTs |
 | `REDIRECT_URI` | OAuth callback URL (default: `http://localhost:8000/auth/callback`) |
 | `FRONTEND_URL` | Frontend origin (default: `http://localhost:5173`) |
+| `DYNAMODB_TABLE` | DynamoDB table name (from CloudFormation output) |
+| `CONTENT_BUCKET` | S3 bucket for article content overflow |
+| `AWS_REGION` | AWS region (default: `us-east-1`) |
