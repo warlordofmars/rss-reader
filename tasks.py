@@ -10,6 +10,7 @@ Usage:
     uv run inv deploy               # deploy to AWS via CDK
 """
 
+import os
 import signal
 import subprocess
 import sys
@@ -26,6 +27,9 @@ REGION = "us-east-1"
 
 
 def _aws_account(ctx):
+    # Allow override via env var — used in CI synth where no credentials are present
+    if account := os.environ.get("AWS_ACCOUNT_ID"):
+        return account
     return ctx.run(
         "aws sts get-caller-identity --query Account --output text",
         hide=True,
