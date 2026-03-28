@@ -24,10 +24,9 @@ def _load_secrets() -> None:
 
 _load_secrets()
 
+import fetcher  # noqa: E402
 from main import app  # noqa: E402 — must import after secrets are injected
 from mangum import Mangum  # noqa: E402
-
-import fetcher  # noqa: E402
 
 _mangum = Mangum(app, lifespan="off")
 

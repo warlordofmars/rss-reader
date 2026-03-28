@@ -38,4 +38,5 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S"]  # asserts and security rules are fine in tests
+"handler.py" = ["I001"]  # late imports are intentional: secrets must load before app imports
 
