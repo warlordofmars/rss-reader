@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import feedparser
 
@@ -13,7 +13,7 @@ def _parse_date(entry) -> datetime:
                 return datetime(*val[:6])
             except Exception:  # noqa: S110
                 pass
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _get_content(entry) -> str:
