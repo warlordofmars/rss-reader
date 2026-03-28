@@ -1,8 +1,8 @@
 import os
 import threading
 import urllib.parse
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from dotenv import load_dotenv
@@ -20,7 +20,16 @@ from scheduler import start_scheduler, stop_scheduler
 
 load_dotenv()
 
-app = FastAPI(title="RSS Reader API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="RSS Reader API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,17 +49,6 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 security = HTTPBearer()
 
 
-@app.on_event("startup")
-async def startup():
-    init_db()
-    start_scheduler()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    stop_scheduler()
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -58,7 +56,7 @@ def create_jwt(user_id: int, email: str) -> str:
     payload = {
         "sub": str(user_id),
         "email": email,
-        "exp": datetime.now(timezone.utc) + timedelta(days=7),
+        "exp": datetime.now(UTC) + timedelta(days=7),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -180,7 +178,7 @@ def list_feeds(
             "title": f.title or f.url,
             "created_at": f.created_at,
             "unread_count": db.query(Article)
-            .filter(Article.feed_id == f.id, Article.is_read == False)
+            .filter(Article.feed_id == f.id, Article.is_read == False)  # noqa: E712
             .count(),
         }
         for f in feeds
@@ -250,8 +248,8 @@ def refresh_feed(
 
 @app.get("/articles")
 def list_articles(
-    feed_id: Optional[int] = Query(None),
-    keyword: Optional[str] = Query(None),
+    feed_id: int | None = Query(None),
+    keyword: str | None = Query(None),
     unread_only: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -276,7 +274,7 @@ def list_articles(
         )
 
     if unread_only:
-        q = q.filter(Article.is_read == False)
+        q = q.filter(Article.is_read == False)  # noqa: E712
 
     articles = q.order_by(Article.published_at.desc()).limit(200).all()
 
