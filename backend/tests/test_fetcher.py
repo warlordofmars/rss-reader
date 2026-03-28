@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -20,9 +20,9 @@ def test_parse_date_falls_back_to_updated_parsed():
 
 def test_parse_date_falls_back_to_utcnow_when_missing():
     entry = SimpleNamespace(published_parsed=None, updated_parsed=None)
-    before = datetime.utcnow()
+    before = datetime.now(UTC).replace(tzinfo=None)
     result = _parse_date(entry)
-    after = datetime.utcnow()
+    after = datetime.now(UTC).replace(tzinfo=None)
     assert before <= result <= after
 
 
