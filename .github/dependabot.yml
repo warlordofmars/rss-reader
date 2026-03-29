@@ -1,0 +1,51 @@
+version: 2
+updates:
+  # Backend Python dependencies
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      backend-deps:
+        patterns: ["*"]
+    ignore:
+      # Only bump patch/minor; major bumps need manual review
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Frontend npm dependencies
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      frontend-deps:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Infra CDK Python dependencies
+  - package-ecosystem: pip
+    directory: /infra
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      infra-deps:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
