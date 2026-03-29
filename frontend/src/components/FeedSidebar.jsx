@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Plus, RefreshCw, Trash2, Rss } from "lucide-react"
+import { Plus, RefreshCw, Trash2, Rss, AlertCircle } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import AddFeedDialog from "./AddFeedDialog"
@@ -77,7 +77,15 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
               selectedFeedId === feed.id && "bg-sidebar-accent font-medium"
             )}
           >
-            <span className="truncate flex-1 mr-1">{feed.title}</span>
+            <span className="truncate flex-1 mr-1 flex items-center gap-1.5">
+              {feed.last_error && (
+                <AlertCircle
+                  className="h-3 w-3 text-destructive shrink-0"
+                  title={feed.last_error}
+                />
+              )}
+              {feed.title}
+            </span>
             <div className="flex items-center gap-1">
               {feed.unread_count > 0 && (
                 <Badge variant="secondary" className="text-xs h-5 px-1.5">

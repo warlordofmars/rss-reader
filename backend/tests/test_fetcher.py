@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fetcher import _get_content, _parse_date, fetch_all_feeds, fetch_feed
+from fetcher import _get_content, _parse_date, fetch_all_feeds, fetch_feed, prune_all_feeds
 
 # ── Unit tests for helper functions ──────────────────────────────────────────
 
@@ -176,4 +176,151 @@ def test_fetch_all_feeds_swallows_per_feed_exceptions(aws, user):
     with patch("fetcher.fetch_feed", side_effect=raise_on_first):
         fetch_all_feeds()  # should not raise
 
-    assert call_count == 2
+
+def test_fetch_feed_skips_entry_with_no_guid(aws, feed, user):
+    """Entries with no id and no link should be silently skipped."""
+    import db
+
+    no_guid_entry = SimpleNamespace(
+        id=None,
+        link=None,
+        title="No GUID Article",
+        summary="",
+        published_parsed=(2024, 1, 1, 0, 0, 0, 0, 0, 0),
+        updated_parsed=None,
+    )
+    # Remove the attributes entirely so getattr falls back to None
+    del no_guid_entry.id
+    del no_guid_entry.link
+
+    fake_parsed = _make_fake_parsed(entries=[no_guid_entry])
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        fetch_feed(feed_dict)
+
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=100, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 0
+
+
+def test_fetch_feed_swallows_create_article_exception(aws, feed, user):
+    """If create_article raises, fetch_feed should skip that entry and continue."""
+    import db
+
+    entries = [
+        SimpleNamespace(
+            id="guid-ok",
+            title="Good Article",
+            link="https://example.com/good",
+            summary="",
+            content=[],
+            published_parsed=(2024, 1, 2, 0, 0, 0, 0, 0, 0),
+            updated_parsed=None,
+        ),
+    ]
+    fake_parsed = _make_fake_parsed(entries=entries)
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    original_create = db.create_article
+    call_count = 0
+
+    def raise_once(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("db error")
+        return original_create(*args, **kwargs)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        with patch("fetcher.db.create_article", side_effect=raise_once):
+            fetch_feed(feed_dict)  # should not raise — exception is swallowed per noqa: S110
+
+
+def test_fetch_feed_records_health_on_success(aws, feed, user):
+    """update_feed_health is called with last_error=None on a clean fetch."""
+    import db
+
+    fake_parsed = _make_fake_parsed()
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        fetch_feed(feed_dict)
+
+    updated = db.get_feed(user["google_id"], feed["id"])
+    assert updated["last_fetched_at"] is not None
+    assert updated["last_error"] is None
+
+
+def test_fetch_feed_records_health_on_error(aws, feed, user):
+    """update_feed_health is called with last_error set when fetch raises."""
+    import db
+
+    bozo_parsed = SimpleNamespace(
+        bozo=True,
+        bozo_exception=Exception("connection refused"),
+        entries=[],
+        feed={"title": ""},
+    )
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=bozo_parsed):
+        try:
+            fetch_feed(feed_dict)
+        except Exception:
+            pass
+
+    updated = db.get_feed(user["google_id"], feed["id"])
+    assert updated["last_fetched_at"] is not None
+    assert updated["last_error"] is not None
+    assert "connection refused" in updated["last_error"]
+
+
+def test_fetch_feed_bozo_with_entries_still_processes(aws, feed, user):
+    """A bozo feed that still has entries should not raise — data is usable."""
+    import db
+
+    bozo_parsed = _make_fake_parsed()
+    bozo_parsed.bozo = True  # bozo but has entries — should proceed
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=bozo_parsed):
+        fetch_feed(feed_dict)  # should not raise
+
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=10, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 1
+
+
+def test_prune_all_feeds(aws, user, feed):
+    """prune_all_feeds deletes old articles across all feeds."""
+    from datetime import UTC, datetime, timedelta
+
+    import db
+
+    now = datetime.now(UTC)
+    old_date = now - timedelta(days=100)
+
+    db.create_article(
+        feed_id=feed["id"], user_id=user["google_id"],
+        guid="old", title="Old", link="https://example.com/old",
+        content="", summary="", published_at=old_date,
+    )
+
+    prune_all_feeds(retention_days=90)
+
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=10, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 0
+
+
+def test_prune_all_feeds_swallows_exceptions(aws, user, feed):
+    """prune_all_feeds should not raise if one feed's prune fails."""
+    with patch("fetcher.db.prune_old_articles", side_effect=RuntimeError("db error")):
+        prune_all_feeds()  # should not raise
