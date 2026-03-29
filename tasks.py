@@ -167,7 +167,7 @@ def outputs(ctx, env="prod"):
     ctx.run(
         f"aws cloudformation describe-stacks --stack-name {stack}"
         f" --region {REGION}"
-        " --query 'Stacks[0].Outputs' --output table",
+        " --query 'Stacks[0].Outputs' --output table --no-cli-pager",
         pty=True,
     )
 
