@@ -8,7 +8,7 @@ on:
 jobs:
   validate-pr:
     name: Validate PR title
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref != 'main'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
