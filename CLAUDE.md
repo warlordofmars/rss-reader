@@ -68,6 +68,8 @@ Two permanent branches:
 
 **Prod release:** PR from `development` → `main` using **merge commit** (not squash). This preserves all individual conventional commits so semantic-release can compute the correct version bump.
 
+**Back-merge:** After every prod deploy, CI automatically opens a PR to merge `main` → `development`. Merge it with **merge commit** to keep branches in sync. Can also be triggered manually with `uv run inv back-merge`.
+
 **Version format:**
 
 - Prod: `MAJOR.MINOR.PATCH` (e.g. `1.2.0`)
