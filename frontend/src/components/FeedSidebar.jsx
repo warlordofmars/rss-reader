@@ -3,10 +3,23 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Plus, RefreshCw, Trash2, Rss, AlertCircle } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
+import { Plus, RefreshCw, Trash2, Rss, AlertCircle, CheckCircle2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import AddFeedDialog from "./AddFeedDialog"
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return "never"
+  const diff = Date.now() - new Date(isoString).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
 
 export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFeeds }) {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -38,6 +51,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
   const totalUnread = feeds.reduce((sum, f) => sum + (f.unread_count || 0), 0)
 
   return (
+    <TooltipProvider>
     <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <span className="text-sm font-medium text-sidebar-foreground">Feeds</span>
@@ -78,12 +92,23 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
             )}
           >
             <span className="truncate flex-1 mr-1 flex items-center gap-1.5">
-              {feed.last_error && (
-                <AlertCircle
-                  className="h-3 w-3 text-destructive shrink-0"
-                  title={feed.last_error}
-                />
-              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {feed.last_error ? (
+                    <AlertCircle className="h-3 w-3 text-destructive shrink-0 cursor-default" />
+                  ) : (
+                    <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 shrink-0 cursor-default opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-56 space-y-1">
+                  {feed.last_error && (
+                    <p className="text-destructive font-medium break-words">{feed.last_error}</p>
+                  )}
+                  <p className="text-muted-foreground">
+                    Fetched: {formatRelativeTime(feed.last_fetched_at)}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
               {feed.title}
             </span>
             <div className="flex items-center gap-1">
@@ -121,5 +146,6 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
         </span>
       </div>
     </aside>
+    </TooltipProvider>
   )
 }
