@@ -12,6 +12,7 @@ from aws_cdk import (  # noqa: I001
     aws_certificatemanager as acm,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
+    aws_cloudwatch as cw,
     aws_dynamodb as dynamodb,
     aws_events as events,
     aws_events_targets as targets,
@@ -386,6 +387,216 @@ class RssReaderStack(Stack):
                 iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
             ],
             description=f"Assumed by GitHub Actions to deploy the RSS Reader CDK stack ({env_name})",  # noqa: E501
+        )
+
+        # ── CloudWatch Dashboard ──────────────────────────────────────────────
+        dashboard_name = "RssReader" if is_prod else f"RssReader-{env_name}"
+        dashboard = cw.Dashboard(
+            self,
+            "Dashboard",
+            dashboard_name=dashboard_name,
+        )
+
+        # Lambda widgets
+        dashboard.add_widgets(
+            cw.TextWidget(markdown="## Lambda", width=24, height=1),
+            cw.GraphWidget(
+                title="Invocations & Errors",
+                left=[
+                    api_fn.metric_invocations(statistic="sum", period=Duration.minutes(5)),
+                ],
+                right=[
+                    api_fn.metric_errors(statistic="sum", period=Duration.minutes(5)),
+                ],
+                width=12,
+            ),
+            cw.GraphWidget(
+                title="Duration (p50 / p99)",
+                left=[
+                    api_fn.metric_duration(statistic="p50", period=Duration.minutes(5)),
+                    api_fn.metric_duration(statistic="p99", period=Duration.minutes(5)),
+                ],
+                width=12,
+            ),
+            cw.GraphWidget(
+                title="Throttles & Concurrent Executions",
+                left=[
+                    api_fn.metric_throttles(statistic="sum", period=Duration.minutes(5)),
+                ],
+                right=[
+                    cw.Metric(
+                        namespace="AWS/Lambda",
+                        metric_name="ConcurrentExecutions",
+                        dimensions_map={"FunctionName": api_fn.function_name},
+                        statistic="max",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=12,
+            ),
+        )
+
+        # API Gateway widgets
+        dashboard.add_widgets(
+            cw.TextWidget(markdown="## API Gateway", width=24, height=1),
+            cw.GraphWidget(
+                title="Request Count",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/ApiGateway",
+                        metric_name="Count",
+                        dimensions_map={"ApiName": rest_api.rest_api_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+            cw.GraphWidget(
+                title="4xx / 5xx Errors",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/ApiGateway",
+                        metric_name="4XXError",
+                        dimensions_map={"ApiName": rest_api.rest_api_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                    cw.Metric(
+                        namespace="AWS/ApiGateway",
+                        metric_name="5XXError",
+                        dimensions_map={"ApiName": rest_api.rest_api_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+            cw.GraphWidget(
+                title="Latency (p50 / p99)",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/ApiGateway",
+                        metric_name="Latency",
+                        dimensions_map={"ApiName": rest_api.rest_api_name},
+                        statistic="p50",
+                        period=Duration.minutes(5),
+                    ),
+                    cw.Metric(
+                        namespace="AWS/ApiGateway",
+                        metric_name="Latency",
+                        dimensions_map={"ApiName": rest_api.rest_api_name},
+                        statistic="p99",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+        )
+
+        # DynamoDB widgets
+        dashboard.add_widgets(
+            cw.TextWidget(markdown="## DynamoDB", width=24, height=1),
+            cw.GraphWidget(
+                title="Consumed Read / Write Capacity",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/DynamoDB",
+                        metric_name="ConsumedReadCapacityUnits",
+                        dimensions_map={"TableName": table.table_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                right=[
+                    cw.Metric(
+                        namespace="AWS/DynamoDB",
+                        metric_name="ConsumedWriteCapacityUnits",
+                        dimensions_map={"TableName": table.table_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=12,
+            ),
+            cw.GraphWidget(
+                title="Throttled Requests",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/DynamoDB",
+                        metric_name="ReadThrottleEvents",
+                        dimensions_map={"TableName": table.table_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                    cw.Metric(
+                        namespace="AWS/DynamoDB",
+                        metric_name="WriteThrottleEvents",
+                        dimensions_map={"TableName": table.table_name},
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=12,
+            ),
+        )
+
+        # CloudFront widgets
+        dashboard.add_widgets(
+            cw.TextWidget(markdown="## CloudFront", width=24, height=1),
+            cw.GraphWidget(
+                title="Requests",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/CloudFront",
+                        metric_name="Requests",
+                        dimensions_map={"DistributionId": distribution.distribution_id, "Region": "Global"},  # noqa: E501
+                        statistic="sum",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+            cw.GraphWidget(
+                title="Cache Hit Rate",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/CloudFront",
+                        metric_name="CacheHitRate",
+                        dimensions_map={"DistributionId": distribution.distribution_id, "Region": "Global"},  # noqa: E501
+                        statistic="average",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+            cw.GraphWidget(
+                title="4xx / 5xx Error Rate",
+                left=[
+                    cw.Metric(
+                        namespace="AWS/CloudFront",
+                        metric_name="4xxErrorRate",
+                        dimensions_map={"DistributionId": distribution.distribution_id, "Region": "Global"},  # noqa: E501
+                        statistic="average",
+                        period=Duration.minutes(5),
+                    ),
+                    cw.Metric(
+                        namespace="AWS/CloudFront",
+                        metric_name="5xxErrorRate",
+                        dimensions_map={"DistributionId": distribution.distribution_id, "Region": "Global"},  # noqa: E501
+                        statistic="average",
+                        period=Duration.minutes(5),
+                    ),
+                ],
+                width=8,
+            ),
+        )
+
+        CfnOutput(
+            self,
+            "DashboardUrl",
+            value=f"https://{self.region}.console.aws.amazon.com/cloudwatch/home#dashboards:name={dashboard_name}",  # noqa: E501
+            export_name=export_name("DashboardUrl"),
         )
 
         # ── Outputs ───────────────────────────────────────────────────────────
