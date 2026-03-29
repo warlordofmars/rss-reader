@@ -130,32 +130,33 @@ feature-branch → PR → development  (squash merge)
 ```
 
 - Branch from `development`
-- PR title must follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, etc.) — enforced by CI
-- Merge using **squash merge** — the PR title becomes the single commit on `development`
-- CI runs lint + tests on every PR and merge; a successful merge auto-deploys to dev
+- Open a PR targeting `development`; CI runs lint + tests
+- Merge using **squash merge** — one clean commit lands on `development`
+- A successful merge auto-deploys to dev
 
 ### Releasing to prod
 
 ```text
 development → PR → main  (merge commit)
+                ↓
+        semantic-release
+        GitHub release + tag
+        deploy to prod
+                ↓
+        auto back-merge PR
+        main → development  (auto-merges when CI passes)
 ```
 
-- Open a PR from `development` → `main`
-- Merge using **merge commit** (not squash) — this preserves all individual commits so `semantic-release` can analyze them and compute the correct version bump
-- `semantic-release` inspects the conventional commits since the last tag, creates a GitHub release and git tag, then deploys to prod
+1. Open a PR from `development` → `main`
+2. CI runs lint + tests
+3. Merge using **merge commit** (not squash) — this preserves all individual commits so `semantic-release` can read them and compute the correct version bump (`feat:` → minor, `fix:` → patch, breaking → major)
+4. CI then automatically:
+   - Runs `semantic-release` → creates a GitHub release + git tag
+   - Deploys to prod
+   - Opens a back-merge PR (`main` → `development`) and enables auto-merge on it
+5. The back-merge PR merges automatically once CI passes — no action needed
 
-### After a prod release: back-merge
-
-After every prod deploy, CI automatically opens a PR to merge `main` back into `development`:
-
-```text
-main → PR → development  (merge commit)
-```
-
-- The PR is titled `chore: merge main back to development`
-- Merge it using **merge commit** (not squash) to preserve history
-- This keeps `development` in sync so the next release builds on the correct base
-- You can also trigger this manually: `uv run inv back-merge`
+> **Note:** If the back-merge PR has conflicts, resolve them on a branch and PR into `development` first, then the back-merge will merge cleanly. You can also trigger the back-merge PR manually: `uv run inv back-merge`
 
 ### Version numbers
 
