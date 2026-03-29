@@ -19,7 +19,16 @@
       "Bash(npm audit:*)",
       "Bash(uv tree:*)",
       "Bash(git commit:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(cdk --version)",
+      "Bash(uv python:*)",
+      "Bash(ls /Users/john/Projects/rss-reader/backend/.env*)",
+      "Bash(ls /Users/john/Projects/rss-reader/frontend/src/components/*.test.*)",
+      "Bash(JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 uv run cdk synth --no-staging)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 uv run cdk synth --no-staging --output cdk.out2)"
     ]
   },
   "hooks": {
