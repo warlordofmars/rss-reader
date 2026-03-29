@@ -114,6 +114,45 @@ uv run inv clean                # remove build artifacts
 
 Sub-tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`, `test-frontend`, `synth`.
 
+## Branching & Release Workflow
+
+This repo uses a two-branch model:
+
+| Branch | Environment | Deploys on |
+| --- | --- | --- |
+| `development` | dev (`rss-dev.warlordofmars.net`) | every merge |
+| `main` | prod (`rss.warlordofmars.net`) | every merge |
+
+### Day-to-day: feature work
+
+```text
+feature-branch → PR → development  (squash merge)
+```
+
+- Branch from `development`
+- PR title must follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, etc.) — enforced by CI
+- Merge using **squash merge** — the PR title becomes the single commit on `development`
+- CI runs lint + tests on every PR and merge; a successful merge auto-deploys to dev
+
+### Releasing to prod
+
+```text
+development → PR → main  (merge commit)
+```
+
+- Open a PR from `development` → `main`
+- Merge using **merge commit** (not squash) — this preserves all individual commits so `semantic-release` can analyze them and compute the correct version bump
+- `semantic-release` inspects the conventional commits since the last tag, creates a GitHub release and git tag, then deploys to prod
+
+### Version numbers
+
+| Context | Format | Example |
+| --- | --- | --- |
+| Prod release | `MAJOR.MINOR.PATCH` | `1.2.0` |
+| Dev deploy | `MAJOR.MINOR.PATCH-dev.<sha>` | `1.2.0-dev.aa584cd` |
+
+The dev version reflects the *inferred next* version based on commits since the last tag, plus the short git SHA for uniqueness between deploys.
+
 ## Deployment
 
 ### Prod (first-time setup)
