@@ -22,6 +22,7 @@ A full-stack RSS reader with Google OAuth, deployed on AWS.
 - Mark articles as read / unread
 - Keyword filtering across title and content
 - Auto-refresh all feeds every 30 minutes (EventBridge)
+- Admin interface at `/admin` — user list with engagement metrics and CloudWatch links
 
 ## Project Structure
 
@@ -149,9 +150,9 @@ development → PR → main  (merge commit)
 
 1. Open a PR from `development` → `main`
 2. CI runs lint + tests
-3. Merge using **merge commit** (not squash) — this preserves all individual commits so `semantic-release` can read them and compute the correct version bump (`feat:` → minor, `fix:` → patch, breaking → major)
+3. Merge using **merge commit** (not squash) — this preserves all individual commits so the versioning script can compute the correct bump (`feat:` → minor, breaking → major, anything else → patch)
 4. CI then automatically:
-   - Runs `semantic-release` → creates a GitHub release + git tag
+   - Bumps the version, creates a git tag and GitHub release
    - Deploys to prod
    - Opens a back-merge PR (`main` → `development`) and enables auto-merge on it
 5. The back-merge PR merges automatically once CI passes — no action needed
@@ -182,7 +183,7 @@ uv run inv deploy
 uv run inv outputs
 aws secretsmanager put-secret-value \
   --secret-id <AppSecretArn> \
-  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"..."}'
+  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"...","ADMIN_PASSWORD":"..."}'
 
 # 4. Add GitHub secrets for CI/CD
 #    AWS_DEPLOY_ROLE_ARN  →  GitHubActionsDeployRoleArn output
@@ -206,7 +207,7 @@ uv run inv deploy --env <name>
 uv run inv outputs --env <name>
 aws secretsmanager put-secret-value \
   --secret-id <AppSecretArn> \
-  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"..."}'
+  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"...","ADMIN_PASSWORD":"..."}'
 
 # 3. Add OAuth redirect URI in Google Cloud Console
 #    https://api.rss-<name>.warlordofmars.net/auth/callback
@@ -230,3 +231,4 @@ To deploy `dev` from GitHub Actions, trigger the **Deploy Dev** workflow manuall
 | `DYNAMODB_TABLE` | DynamoDB table name (from CloudFormation output) |
 | `CONTENT_BUCKET` | S3 bucket for article content overflow |
 | `AWS_REGION` | AWS region (default: `us-east-1`) |
+| `ADMIN_PASSWORD` | Password for `/admin` HTTP Basic Auth (default: `admin`) |
