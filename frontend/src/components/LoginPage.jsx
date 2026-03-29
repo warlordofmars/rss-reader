@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button"
 import Logo from "./Logo"
 
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
+
 export default function LoginPage() {
   return (
     <div className="flex items-center justify-center h-screen bg-background">
@@ -15,7 +17,7 @@ export default function LoginPage() {
 
         <Button
           className="w-full"
-          onClick={() => (window.location.href = "http://localhost:8000/auth/login")}
+          onClick={() => (window.location.href = `${API_BASE}/auth/login`)}
         >
           Sign in with Google
         </Button>
