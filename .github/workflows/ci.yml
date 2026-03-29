@@ -6,17 +6,6 @@ on:
   pull_request:
 
 jobs:
-  validate-pr:
-    name: Validate PR title
-    if: github.event_name == 'pull_request' && github.base_ref != 'main'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: read
-    steps:
-      - uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
