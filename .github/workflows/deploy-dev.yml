@@ -34,12 +34,5 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Resolve version
-        id: get-version
-        run: |
-          echo "version=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 'dev')" >> $GITHUB_OUTPUT
-
       - name: Deploy dev stack
         run: uv run inv deploy --env dev
-        env:
-          APP_VERSION: ${{ steps.get-version.outputs.version }}-dev

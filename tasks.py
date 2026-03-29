@@ -11,6 +11,7 @@ Usage:
 """
 
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -27,6 +28,43 @@ REGION = "us-east-1"
 
 def _stack_name(env):
     return "RssReaderStack" if env == "prod" else f"RssReaderStack-{env}"
+
+
+def _infer_next_version(ctx):
+    """Infer the next semver from commits since the last tag using conventional commit rules."""
+    try:
+        last_tag = ctx.run("git describe --tags --abbrev=0", hide=True).stdout.strip()
+    except Exception:
+        last_tag = "v0.0.0"
+
+    version = last_tag.lstrip("v")
+    major, minor, patch = (int(x) for x in version.split("."))
+
+    try:
+        log = ctx.run(
+            f"git log {last_tag}..HEAD --pretty=format:%s", hide=True
+        ).stdout.strip()
+    except Exception:
+        log = ""
+
+    bump = "none"
+    for msg in log.splitlines():
+        if re.search(r"^[a-z]+(\(.+\))?!:|BREAKING CHANGE", msg):
+            bump = "major"
+            break
+        elif re.search(r"^feat(\(.+\))?:", msg) and bump != "major":
+            bump = "minor"
+        elif re.search(r"^(fix|perf)(\(.+\))?:", msg) and bump == "none":
+            bump = "patch"
+
+    if bump == "major":
+        return f"{major + 1}.0.0"
+    elif bump == "minor":
+        return f"{major}.{minor + 1}.0"
+    elif bump == "patch":
+        return f"{major}.{minor}.{patch + 1}"
+    else:
+        return version
 
 
 def _aws_account(ctx):
@@ -149,10 +187,15 @@ def deploy(ctx, env="prod"):
     """Deploy CDK stack to AWS. Use --env dev for dev stack."""
     account = _aws_account(ctx)
     stack = _stack_name(env)
+    if env == "prod":
+        version = os.environ.get("APP_VERSION", "dev")
+    else:
+        version = f"{_infer_next_version(ctx)}-{env}"
     with ctx.cd(INFRA):
         ctx.run(
             f"uv run cdk deploy {stack} --require-approval never"
             f" -c account={account} -c env={env}",
+            env={"APP_VERSION": version},
             pty=True,
         )
 
