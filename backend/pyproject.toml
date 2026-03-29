@@ -22,6 +22,7 @@ dev = [
     "moto[dynamodb,s3]",
     "ruff",
     "pip-audit",
+    "pytest-github-actions-annotate-failures>=0.4.0",
 ]
 
 [tool.ruff]
