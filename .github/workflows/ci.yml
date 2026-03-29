@@ -311,9 +311,33 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           APP_VERSION: ${{ needs.release.outputs.version }}
 
+  smoke:
+    name: Smoke tests (prod)
+    needs: [deploy]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+        working-directory: backend
+
+      - name: Run smoke tests
+        run: uv run pytest tests/e2e/test_smoke.py -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
+        working-directory: backend
+        env:
+          E2E_BASE_URL: https://api.rss.warlordofmars.net
+          E2E_ADMIN_PASS: ${{ secrets.PROD_ADMIN_PASSWORD || 'admin' }}
+          E2E_EXPECT_INFRA_LINKS: "true"
+
   back-merge:
     name: Open back-merge PR (main → development)
-    needs: [deploy]
+    needs: [smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read

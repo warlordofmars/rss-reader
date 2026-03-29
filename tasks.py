@@ -150,6 +150,26 @@ def test_e2e(ctx, env="dev", admin_pass="admin"):
         )
 
 
+@task
+def smoke(ctx, env="prod", admin_pass="admin"):
+    """Run smoke tests against a deployed environment (default: prod)."""
+    base_url = (
+        "https://api.rss.warlordofmars.net"
+        if env == "prod"
+        else f"https://api.rss-{env}.warlordofmars.net"
+    )
+    with ctx.cd(BACKEND):
+        ctx.run(
+            "uv run pytest tests/e2e/test_smoke.py -v",
+            env={
+                "E2E_BASE_URL": base_url,
+                "E2E_ADMIN_PASS": admin_pass,
+                "E2E_EXPECT_INFRA_LINKS": "true",
+            },
+            pty=True,
+        )
+
+
 # ── Local dev ─────────────────────────────────────────────────────────────────
 
 
