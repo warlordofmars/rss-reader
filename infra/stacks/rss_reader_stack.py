@@ -35,10 +35,35 @@ HOSTED_ZONE_ID = "Z3E3AQ9RR5XH0V"
 CERTIFICATE_ID = "471106fc-e3dd-4e0b-a20f-010a6e326283"
 GITHUB_REPO = "warlordofmars/rss-reader"  # org/repo for OIDC trust policy
 
+# Per-environment config
+ENV_CONFIG = {
+    "prod": {
+        "frontend_domain": "rss.warlordofmars.net",
+        "api_domain": "api.rss.warlordofmars.net",
+    },
+    "dev": {
+        "frontend_domain": "rss-dev.warlordofmars.net",
+        "api_domain": "api.rss-dev.warlordofmars.net",
+    },
+}
+
 
 class RssReaderStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, env_name: str = "prod", **kwargs) -> None:  # noqa: E501
         super().__init__(scope, construct_id, **kwargs)
+
+        is_prod = env_name == "prod"
+        cfg = ENV_CONFIG[env_name]
+        frontend_domain = cfg["frontend_domain"]
+        api_domain = cfg["api_domain"]
+        frontend_url = f"https://{frontend_domain}"
+        api_url = f"https://{api_domain}"
+
+        # CloudFormation export name helper — prod keeps existing names for backward compat
+        def export_name(suffix):
+            if is_prod:
+                return f"RssReader{suffix}"
+            return f"RssReader{env_name.capitalize()}{suffix}"
 
         # ── DynamoDB single table ──────────────────────────────────────────────
         #
@@ -109,7 +134,7 @@ class RssReaderStack(Stack):
         # ── Secrets Manager ───────────────────────────────────────────────────
         # Stores sensitive app config. Populate after first deploy with:
         #   aws secretsmanager put-secret-value \
-        #     --secret-id rss-reader/app \
+        #     --secret-id <AppSecretArn> \
         #     --secret-string '{
         #       "GOOGLE_CLIENT_ID": "...",
         #       "GOOGLE_CLIENT_SECRET": "...",
@@ -119,7 +144,7 @@ class RssReaderStack(Stack):
             self,
             "AppSecret",
             description=(
-                "RSS Reader secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET. "
+                f"RSS Reader ({env_name}) secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET. "  # noqa: E501
                 "Populate manually after first deploy."
             ),
             removal_policy=RemovalPolicy.RETAIN,
@@ -133,19 +158,28 @@ class RssReaderStack(Stack):
             zone_name="warlordofmars.net",
         )
 
-        # Existing ACM certificate (us-east-1) — used for CloudFront (frontend)
-        certificate = acm.Certificate.from_certificate_arn(
-            self,
-            "Certificate",
-            f"arn:aws:acm:us-east-1:{self.account}:certificate/{CERTIFICATE_ID}",
-        )
+        # Frontend CloudFront certificate (must be in us-east-1):
+        #   prod — import the existing manually-created cert
+        #   dev  — CDK provisions and validates via DNS
+        if is_prod:
+            frontend_certificate = acm.Certificate.from_certificate_arn(
+                self,
+                "Certificate",
+                f"arn:aws:acm:us-east-1:{self.account}:certificate/{CERTIFICATE_ID}",
+            )
+        else:
+            frontend_certificate = acm.Certificate(
+                self,
+                "FrontendCertificate",
+                domain_name=frontend_domain,
+                validation=acm.CertificateValidation.from_dns(zone),
+            )
 
-        # Separate certificate for the API custom domain — CDK provisions and
-        # validates it via DNS using the existing hosted zone.
+        # API custom domain certificate — CDK provisions and validates via DNS
         api_certificate = acm.Certificate(
             self,
             "ApiCertificate",
-            domain_name="api.rss.warlordofmars.net",
+            domain_name=api_domain,
             validation=acm.CertificateValidation.from_dns(zone),
         )
 
@@ -191,8 +225,8 @@ class RssReaderStack(Stack):
                 "DYNAMODB_TABLE": table.table_name,
                 "CONTENT_BUCKET": content_bucket.bucket_name,
                 "APP_SECRET_ARN": app_secret.secret_arn,
-                "REDIRECT_URI": "https://api.rss.warlordofmars.net/auth/callback",
-                "FRONTEND_URL": "https://rss.warlordofmars.net",
+                "REDIRECT_URI": f"{api_url}/auth/callback",
+                "FRONTEND_URL": frontend_url,
                 "APP_VERSION": APP_VERSION,
             },
         )
@@ -219,13 +253,11 @@ class RssReaderStack(Stack):
 
         self.rest_api = rest_api
 
-        # ── API Gateway custom domain: api.rss.warlordofmars.net ──────────────
-        # Edge-optimised domain — certificate must be in us-east-1 (same cert as
-        # CloudFront).  Base path mapping "/" routes all traffic to the prod stage.
-        api_domain = apigw.DomainName(
+        # ── API Gateway custom domain ─────────────────────────────────────────
+        api_domain_name = apigw.DomainName(
             self,
             "ApiDomainName",
-            domain_name="api.rss.warlordofmars.net",
+            domain_name=api_domain,
             certificate=api_certificate,
             endpoint_type=apigw.EndpointType.EDGE,
             mapping=rest_api,
@@ -235,26 +267,22 @@ class RssReaderStack(Stack):
             self,
             "ApiARecord",
             zone=zone,
-            record_name="api.rss",
+            record_name=api_domain.removesuffix(".warlordofmars.net"),
             target=route53.RecordTarget.from_alias(
-                r53_targets.ApiGatewayDomain(api_domain)
+                r53_targets.ApiGatewayDomain(api_domain_name)
             ),
         )
 
         # ── EventBridge scheduler (every 30 min) ──────────────────────────────
-        # Replaces APScheduler — Lambda is stateless so the scheduler cannot run
-        # inside the process.  handler.py detects source=="aws.events" and calls
-        # fetcher.fetch_all_feeds() instead of routing through Mangum.
         rule = events.Rule(
             self,
             "FeedRefreshRule",
             schedule=events.Schedule.rate(Duration.minutes(30)),
-            description="Trigger RSS feed refresh every 30 minutes",
+            description=f"Trigger RSS feed refresh every 30 minutes ({env_name})",
         )
         rule.add_target(targets.LambdaFunction(api_fn))
 
         # ── Frontend: S3 + CloudFront + Route53 ───────────────────────────────
-        # Private S3 bucket — CloudFront serves content via OAC
         frontend_bucket = s3.Bucket(
             self,
             "FrontendBucket",
@@ -273,8 +301,8 @@ class RssReaderStack(Stack):
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
             ),
-            domain_names=["rss.warlordofmars.net"],
-            certificate=certificate,
+            domain_names=[frontend_domain],
+            certificate=frontend_certificate,
             default_root_object="index.html",
             # SPA: return index.html for 403/404 so React Router handles routing
             error_responses=[
@@ -291,12 +319,11 @@ class RssReaderStack(Stack):
             ],
         )
 
-        # DNS: rss.warlordofmars.net → CloudFront
         route53.ARecord(
             self,
             "FrontendARecord",
             zone=zone,
-            record_name="rss",
+            record_name=frontend_domain.removesuffix(".warlordofmars.net"),
             target=route53.RecordTarget.from_alias(
                 r53_targets.CloudFrontTarget(distribution)
             ),
@@ -313,7 +340,7 @@ class RssReaderStack(Stack):
                     bundling=BundlingOptions(
                         image=DockerImage.from_registry("node:20-alpine"),
                         environment={
-                            "VITE_API_URL": "https://api.rss.warlordofmars.net",
+                            "VITE_API_URL": api_url,
                             "VITE_APP_VERSION": APP_VERSION,
                         },
                         command=[
@@ -332,21 +359,28 @@ class RssReaderStack(Stack):
         )
 
         # ── GitHub Actions OIDC deploy role ───────────────────────────────────
-        # Allows GitHub Actions to assume this role without long-lived keys.
-        # First deploy must be done manually (chicken-and-egg); after that CI
-        # deploys automatically on every push to main.
-        github_oidc = iam.OpenIdConnectProvider(
-            self,
-            "GitHubOidcProvider",
-            url="https://token.actions.githubusercontent.com",
-            client_ids=["sts.amazonaws.com"],
-        )
+        # The OIDC provider is a singleton per AWS account — only prod creates it.
+        # Dev references the provider by its deterministic ARN.
+        if is_prod:
+            github_oidc = iam.OpenIdConnectProvider(
+                self,
+                "GitHubOidcProvider",
+                url="https://token.actions.githubusercontent.com",
+                client_ids=["sts.amazonaws.com"],
+            )
+            oidc_provider_arn = github_oidc.open_id_connect_provider_arn
+        else:
+            # Provider was created by the prod stack; reference it by ARN
+            oidc_provider_arn = (
+                f"arn:aws:iam::{self.account}:oidc-provider"
+                "/token.actions.githubusercontent.com"
+            )
 
         deploy_role = iam.Role(
             self,
             "GitHubActionsDeployRole",
             assumed_by=iam.WebIdentityPrincipal(
-                github_oidc.open_id_connect_provider_arn,
+                oidc_provider_arn,
                 conditions={
                     "StringLike": {
                         "token.actions.githubusercontent.com:sub": (
@@ -355,75 +389,73 @@ class RssReaderStack(Stack):
                     },
                 },
             ),
-            # AdministratorAccess is appropriate here — CDK needs to create/update
-            # any resource type in the stack.
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
             ],
-            description="Assumed by GitHub Actions to deploy the RSS Reader CDK stack",
+            description=f"Assumed by GitHub Actions to deploy the RSS Reader CDK stack ({env_name})",  # noqa: E501
         )
 
         # ── Outputs ───────────────────────────────────────────────────────────
-        CfnOutput(self, "TableName", value=table.table_name, export_name="RssReaderTableName")
+        CfnOutput(self, "TableName", value=table.table_name, export_name=export_name("TableName"))
         CfnOutput(
             self,
             "ContentBucketName",
             value=content_bucket.bucket_name,
-            export_name="RssReaderContentBucketName",
+            export_name=export_name("ContentBucketName"),
         )
         CfnOutput(
             self,
             "ContentBucketArn",
             value=content_bucket.bucket_arn,
-            export_name="RssReaderContentBucketArn",
+            export_name=export_name("ContentBucketArn"),
         )
         CfnOutput(
             self,
             "ApiUrl",
             value=rest_api.url,
-            export_name="RssReaderApiUrl",
+            export_name=export_name("ApiUrl"),
         )
         CfnOutput(
             self,
             "AppSecretArn",
             value=app_secret.secret_arn,
             description="Populate via ARN: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET",
-            export_name="RssReaderAppSecretArn",
+            export_name=export_name("AppSecretArn"),
         )
         CfnOutput(
             self,
             "LambdaFunctionName",
             value=api_fn.function_name,
-            export_name="RssReaderLambdaFunctionName",
+            export_name=export_name("LambdaFunctionName"),
         )
         CfnOutput(
             self,
             "FrontendBucketName",
             value=frontend_bucket.bucket_name,
-            export_name="RssReaderFrontendBucketName",
+            export_name=export_name("FrontendBucketName"),
         )
         CfnOutput(
             self,
             "FrontendDistributionId",
             value=distribution.distribution_id,
-            export_name="RssReaderFrontendDistributionId",
+            export_name=export_name("FrontendDistributionId"),
         )
         CfnOutput(
             self,
             "FrontendUrl",
-            value="https://rss.warlordofmars.net",
-            export_name="RssReaderFrontendUrl",
+            value=frontend_url,
+            export_name=export_name("FrontendUrl"),
         )
         CfnOutput(
             self,
             "ApiCustomDomain",
-            value="https://api.rss.warlordofmars.net",
-            export_name="RssReaderApiCustomDomain",
+            value=api_url,
+            export_name=export_name("ApiCustomDomain"),
         )
         CfnOutput(
             self,
             "GitHubActionsDeployRoleArn",
             value=deploy_role.role_arn,
-            description="Set as AWS_DEPLOY_ROLE_ARN in GitHub Actions secrets",
-            export_name="RssReaderGitHubActionsDeployRoleArn",
+            description="Set as AWS_DEPLOY_ROLE_ARN (prod) or AWS_DEV_DEPLOY_ROLE_ARN (dev) in GitHub Actions secrets",  # noqa: E501
+            export_name=export_name("GitHubActionsDeployRoleArn"),
         )
