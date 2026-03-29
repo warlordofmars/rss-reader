@@ -142,6 +142,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
+  const [infra, setInfra] = useState({})
 
   const login = (creds) => {
     setLoading(true)
@@ -162,6 +163,9 @@ export default function AdminPage() {
     adminFetch("/admin/users", credentials)
       .then(setUsers)
       .catch(() => setCredentials(null))
+    adminFetch("/admin/infra", credentials)
+      .then(setInfra)
+      .catch(() => {})
   }, [credentials])
 
   if (!credentials) {
@@ -180,12 +184,34 @@ export default function AdminPage() {
     <div className="flex flex-col h-screen bg-background">
       <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
         <h1 className="font-semibold">Admin — Users ({users.length})</h1>
-        <button
-          onClick={() => setCredentials(null)}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-4">
+          {infra.dashboard && (
+            <a
+              href={infra.dashboard}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              CloudWatch Dashboard ↗
+            </a>
+          )}
+          {infra.lambda_logs && (
+            <a
+              href={infra.lambda_logs}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Lambda Logs ↗
+            </a>
+          )}
+          <button
+            onClick={() => setCredentials(null)}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 min-h-0">

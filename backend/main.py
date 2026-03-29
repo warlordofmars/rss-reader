@@ -306,3 +306,25 @@ def admin_get_user(google_id: str, _: None = Depends(require_admin)):
         "total_unread": stats["total_unread"],
         "feeds": stats["feeds"],
     }
+
+
+@app.get("/admin/infra")
+def admin_infra(_: None = Depends(require_admin)):
+    region = os.getenv("AWS_REGION", "us-east-1")
+    dashboard_name = os.getenv("DASHBOARD_NAME")
+    fn_name = os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+
+    def cw(fragment: str) -> str:
+        return f"https://{region}.console.aws.amazon.com/cloudwatch/home#{fragment}"
+
+    def log_url(log_group: str) -> str:
+        encoded = log_group.replace("/", "$252F")
+        return cw(f"logsV2:log-groups/log-group/{encoded}")
+
+    links = {}
+    if dashboard_name:
+        links["dashboard"] = cw(f"dashboards:name={dashboard_name}")
+    if fn_name:
+        links["lambda_logs"] = log_url(f"/aws/lambda/{fn_name}")
+
+    return links

@@ -222,6 +222,7 @@ class RssReaderStack(Stack):
                 "REDIRECT_URI": f"{api_url}/auth/callback",
                 "FRONTEND_URL": frontend_url,
                 "APP_VERSION": APP_VERSION,
+                "DASHBOARD_NAME": dashboard_name,
             },
         )
 
