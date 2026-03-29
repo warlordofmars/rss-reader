@@ -47,24 +47,20 @@ def _infer_next_version(ctx):
     except Exception:
         log = ""
 
-    bump = "none"
+    bump = "patch"  # default: at least a patch bump
     for msg in log.splitlines():
         if re.search(r"^[a-z]+(\(.+\))?!:|BREAKING CHANGE", msg):
             bump = "major"
             break
         elif re.search(r"^feat(\(.+\))?:", msg) and bump != "major":
             bump = "minor"
-        elif re.search(r"^(fix|perf)(\(.+\))?:", msg) and bump == "none":
-            bump = "patch"
 
     if bump == "major":
         return f"{major + 1}.0.0"
     elif bump == "minor":
         return f"{major}.{minor + 1}.0"
-    elif bump == "patch":
-        return f"{major}.{minor}.{patch + 1}"
     else:
-        return version
+        return f"{major}.{minor}.{patch + 1}"
 
 
 def _aws_account(ctx):
