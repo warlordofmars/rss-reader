@@ -1,4 +1,5 @@
 import os
+import secrets as secrets_module
 import threading
 import urllib.parse
 from contextlib import asynccontextmanager
@@ -9,7 +10,12 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import (  # noqa: E501
+    HTTPAuthorizationCredentials,
+    HTTPBasic,
+    HTTPBasicCredentials,
+    HTTPBearer,
+)
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
@@ -50,6 +56,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 security = HTTPBearer()
+admin_security = HTTPBasic()
 
 
 # ── Auth helpers ───────────────────────────────────────────────────────────────
@@ -77,6 +84,21 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+# ── Admin auth ────────────────────────────────────────────────────────────────
+
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(admin_security)) -> None:
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+    username_ok = secrets_module.compare_digest(credentials.username, "admin")
+    password_ok = secrets_module.compare_digest(credentials.password, admin_password)
+    if not (username_ok and password_ok):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
 
 # ── Version ───────────────────────────────────────────────────────────────────
@@ -238,3 +260,49 @@ def mark_unread(article_id: str, current_user: dict = Depends(get_current_user))
     if result is None:
         raise HTTPException(status_code=404, detail="Article not found")
     return result
+
+
+# ── Admin routes ───────────────────────────────────────────────────────────────
+
+
+@app.get("/admin/users")
+def admin_list_users(_: None = Depends(require_admin)):
+    users = db.list_all_users()
+    result = []
+    for user in users:
+        google_id = user["google_id"]
+        stats = db.get_user_feed_stats(google_id)
+        article_count = db.count_user_articles(google_id)
+        result.append({
+            "google_id": google_id,
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "picture": user.get("picture"),
+            "created_at": user.get("created_at"),
+            "feed_count": stats["feed_count"],
+            "article_count": article_count,
+            "total_unread": stats["total_unread"],
+            "feeds": stats["feeds"],
+        })
+    result.sort(key=lambda u: u.get("created_at") or "", reverse=True)
+    return result
+
+
+@app.get("/admin/users/{google_id}")
+def admin_get_user(google_id: str, _: None = Depends(require_admin)):
+    user = db.get_user(google_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    stats = db.get_user_feed_stats(google_id)
+    article_count = db.count_user_articles(google_id)
+    return {
+        "google_id": google_id,
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "picture": user.get("picture"),
+        "created_at": user.get("created_at"),
+        "feed_count": stats["feed_count"],
+        "article_count": article_count,
+        "total_unread": stats["total_unread"],
+        "feeds": stats["feeds"],
+    }

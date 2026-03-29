@@ -471,6 +471,58 @@ def get_article(feed_id: str, article_sk: str) -> dict | None:
     return _format_article(item)
 
 
+# ── Admin operations ──────────────────────────────────────────────────────────
+
+
+def list_all_users() -> list[dict]:
+    """Scan for all User (#META) items across all users."""
+    tbl = _table()
+    results = []
+    kwargs: dict = {"FilterExpression": Attr("SK").eq("#META")}
+    while True:
+        resp = tbl.scan(**kwargs)
+        results.extend(resp.get("Items", []))
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return [_from_ddb(i) for i in results]
+
+
+def get_user_feed_stats(google_id: str) -> dict:
+    """Return feed count, per-feed unread counts, and total unread for a user."""
+    resp = _table().query(
+        KeyConditionExpression=Key("PK").eq(f"USER#{google_id}") & Key("SK").begins_with("FEED#"),
+        ProjectionExpression="feed_id, #t, unread_count, created_at",
+        ExpressionAttributeNames={"#t": "title"},
+    )
+    feeds = [_from_ddb(i) for i in resp.get("Items", [])]
+    total_unread = sum(max(0, int(f.get("unread_count", 0))) for f in feeds)
+    return {
+        "feed_count": len(feeds),
+        "total_unread": total_unread,
+        "feeds": [
+            {
+                "feed_id": f.get("feed_id"),
+                "title": f.get("title"),
+                "unread_count": max(0, int(f.get("unread_count", 0))),
+                "created_at": f.get("created_at"),
+            }
+            for f in feeds
+        ],
+    }
+
+
+def count_user_articles(google_id: str) -> int:
+    """Count total articles ingested for a user (via GSI2)."""
+    resp = _table().query(
+        IndexName="GSI2",
+        KeyConditionExpression=Key("GSI2PK").eq(f"USER#{google_id}"),
+        Select="COUNT",
+    )
+    return resp.get("Count", 0)
+
+
 def mark_article_read(
     feed_id: str, article_sk: str, user_id: str, is_read: bool
 ) -> dict | None:
