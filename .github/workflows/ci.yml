@@ -183,7 +183,7 @@ jobs:
         working-directory: backend
         env:
           E2E_BASE_URL: https://api.rss-dev.warlordofmars.net
-          E2E_ADMIN_PASS: ${{ secrets.DEV_ADMIN_PASSWORD }}
+          E2E_ADMIN_PASS: ${{ secrets.DEV_ADMIN_PASSWORD || 'admin' }}
 
   release:
     name: Release

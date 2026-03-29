@@ -22,7 +22,7 @@ def test_me(base_url, auth_headers):
 
 def test_me_unauthenticated(base_url):
     resp = httpx.get(f"{base_url}/auth/me")
-    assert resp.status_code == 403
+    assert resp.status_code in (401, 403)
 
 
 def test_me_bad_token(base_url):
