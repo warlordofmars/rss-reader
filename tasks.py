@@ -190,7 +190,8 @@ def deploy(ctx, env="prod"):
     if env == "prod":
         version = os.environ.get("APP_VERSION", "dev")
     else:
-        version = f"{_infer_next_version(ctx)}-{env}"
+        short_sha = ctx.run("git rev-parse --short HEAD", hide=True).stdout.strip()
+        version = f"{_infer_next_version(ctx)}-{env}.{short_sha}"
     with ctx.cd(INFRA):
         ctx.run(
             f"uv run cdk deploy {stack} --require-approval never"
@@ -220,6 +221,22 @@ def logs(ctx, env="prod"):
     """Tail Lambda CloudWatch logs (Ctrl-C to stop). Use --env dev for dev stack."""
     fn = _cfn_output(ctx, "LambdaFunctionName", env=env)
     ctx.run(f"aws logs tail /aws/lambda/{fn} --follow --region {REGION}", pty=True)
+
+
+# ── Release utilities ─────────────────────────────────────────────────────────
+
+
+@task
+def back_merge(ctx):
+    """Open a PR to merge main back into development after a prod release."""
+    ctx.run(
+        "gh pr create"
+        " --base development"
+        " --head main"
+        " --title 'chore: merge main back to development'"
+        " --body 'Back-merge after prod release. Merge using **merge commit** (not squash).'",
+        pty=True,
+    )
 
 
 # ── Clean ─────────────────────────────────────────────────────────────────────

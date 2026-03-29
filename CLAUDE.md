@@ -57,6 +57,24 @@ Individual tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`,
 - `stacks/rss_reader_stack.py` — single CDK stack defining all AWS resources, parameterized by `env_name`
 - `app.py` — CDK app entry point; reads `env` context to select stack name and config
 
+## Branching & Release Workflow
+
+Two permanent branches:
+
+- `development` — default branch; merges auto-deploy to dev (`rss-dev.warlordofmars.net`)
+- `main` — production; merges trigger semantic-release and auto-deploy to prod (`rss.warlordofmars.net`)
+
+**Feature work:** branch from `development` → PR → `development` using **squash merge**. PR title must be a conventional commit (`feat:`, `fix:`, `chore:`, etc.) — enforced by CI.
+
+**Prod release:** PR from `development` → `main` using **merge commit** (not squash). This preserves all individual conventional commits so semantic-release can compute the correct version bump.
+
+**Back-merge:** After every prod deploy, CI automatically opens a PR to merge `main` → `development`. Merge it with **merge commit** to keep branches in sync. Can also be triggered manually with `uv run inv back-merge`.
+
+**Version format:**
+
+- Prod: `MAJOR.MINOR.PATCH` (e.g. `1.2.0`)
+- Dev: `MAJOR.MINOR.PATCH-dev.<short-sha>` (e.g. `1.2.0-dev.aa584cd`) — inferred next version + SHA
+
 ## Environments
 
 The stack supports arbitrary named environments. `prod` is special; everything else follows a naming convention.
