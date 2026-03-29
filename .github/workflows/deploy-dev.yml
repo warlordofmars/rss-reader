@@ -1,0 +1,45 @@
+name: Deploy Dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy (dev)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Install infra dependencies
+        run: uv sync
+        working-directory: infra
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Resolve version
+        id: get-version
+        run: |
+          echo "version=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 'dev')" >> $GITHUB_OUTPUT
+
+      - name: Deploy dev stack
+        run: uv run inv deploy --env dev
+        env:
+          APP_VERSION: ${{ steps.get-version.outputs.version }}-dev

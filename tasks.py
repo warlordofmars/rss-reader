@@ -22,8 +22,11 @@ ROOT = Path(__file__).parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
 INFRA = ROOT / "infra"
-STACK = "RssReaderStack"
 REGION = "us-east-1"
+
+
+def _stack_name(env):
+    return "RssReaderStack" if env == "prod" else f"RssReaderStack-{env}"
 
 
 def _aws_account(ctx):
@@ -36,9 +39,10 @@ def _aws_account(ctx):
     ).stdout.strip()
 
 
-def _cfn_output(ctx, key):
+def _cfn_output(ctx, key, env="prod"):
+    stack = _stack_name(env)
     return ctx.run(
-        f"aws cloudformation describe-stacks --stack-name {STACK} --region {REGION}"
+        f"aws cloudformation describe-stacks --stack-name {stack} --region {REGION}"
         f" --query \"Stacks[0].Outputs[?OutputKey=='{key}'].OutputValue\""
         " --output text",
         hide=True,
@@ -130,20 +134,25 @@ def dev(ctx):
 
 
 @task
-def synth(ctx):
-    """Synthesize CDK stack (skips Docker bundling)"""
-    account = _aws_account(ctx)
-    with ctx.cd(INFRA):
-        ctx.run(f"uv run cdk synth --no-staging -c account={account}", pty=True)
-
-
-@task
-def deploy(ctx):
-    """Deploy CDK stack to AWS"""
+def synth(ctx, env="prod"):
+    """Synthesize CDK stack (skips Docker bundling). Use --env dev for dev stack."""
     account = _aws_account(ctx)
     with ctx.cd(INFRA):
         ctx.run(
-            f"uv run cdk deploy --require-approval never -c account={account}",
+            f"uv run cdk synth --no-staging -c account={account} -c env={env}",
+            pty=True,
+        )
+
+
+@task
+def deploy(ctx, env="prod"):
+    """Deploy CDK stack to AWS. Use --env dev for dev stack."""
+    account = _aws_account(ctx)
+    stack = _stack_name(env)
+    with ctx.cd(INFRA):
+        ctx.run(
+            f"uv run cdk deploy {stack} --require-approval never"
+            f" -c account={account} -c env={env}",
             pty=True,
         )
 
@@ -152,10 +161,11 @@ def deploy(ctx):
 
 
 @task
-def outputs(ctx):
-    """Print CloudFormation stack outputs"""
+def outputs(ctx, env="prod"):
+    """Print CloudFormation stack outputs. Use --env dev for dev stack."""
+    stack = _stack_name(env)
     ctx.run(
-        f"aws cloudformation describe-stacks --stack-name {STACK}"
+        f"aws cloudformation describe-stacks --stack-name {stack}"
         f" --region {REGION}"
         " --query 'Stacks[0].Outputs' --output table",
         pty=True,
@@ -163,9 +173,9 @@ def outputs(ctx):
 
 
 @task
-def logs(ctx):
-    """Tail Lambda CloudWatch logs (Ctrl-C to stop)"""
-    fn = _cfn_output(ctx, "LambdaFunctionName")
+def logs(ctx, env="prod"):
+    """Tail Lambda CloudWatch logs (Ctrl-C to stop). Use --env dev for dev stack."""
+    fn = _cfn_output(ctx, "LambdaFunctionName", env=env)
     ctx.run(f"aws logs tail /aws/lambda/{fn} --follow --region {REGION}", pty=True)
 
 
