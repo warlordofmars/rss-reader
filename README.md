@@ -25,7 +25,7 @@ A full-stack RSS reader with Google OAuth, deployed on AWS.
 
 ## Project Structure
 
-```
+```text
 rss-reader/
 ├── backend/
 │   ├── main.py          # FastAPI app, routes, auth
@@ -71,6 +71,7 @@ cp backend/.env.example backend/.env
 ```
 
 Get the table and bucket names:
+
 ```bash
 uv run inv outputs
 ```
@@ -154,6 +155,10 @@ aws secretsmanager put-secret-value \
 
 # 3. Add OAuth redirect URI in Google Cloud Console
 #    https://api.rss-<name>.warlordofmars.net/auth/callback
+
+# Ongoing — check outputs or tail logs at any time
+uv run inv outputs --env <name>
+uv run inv logs --env <name>
 ```
 
 To deploy `dev` from GitHub Actions, trigger the **Deploy Dev** workflow manually from the Actions tab. Set `AWS_DEV_DEPLOY_ROLE_ARN` in GitHub secrets to the `GitHubActionsDeployRoleArn` output from the dev stack.
