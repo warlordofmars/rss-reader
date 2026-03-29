@@ -144,6 +144,19 @@ development → PR → main  (merge commit)
 - Merge using **merge commit** (not squash) — this preserves all individual commits so `semantic-release` can analyze them and compute the correct version bump
 - `semantic-release` inspects the conventional commits since the last tag, creates a GitHub release and git tag, then deploys to prod
 
+### After a prod release: back-merge
+
+After every prod deploy, CI automatically opens a PR to merge `main` back into `development`:
+
+```text
+main → PR → development  (merge commit)
+```
+
+- The PR is titled `chore: merge main back to development`
+- Merge it using **merge commit** (not squash) to preserve history
+- This keeps `development` in sync so the next release builds on the correct base
+- You can also trigger this manually: `uv run inv back-merge`
+
 ### Version numbers
 
 | Context | Format | Example |

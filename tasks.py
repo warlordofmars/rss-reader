@@ -223,6 +223,22 @@ def logs(ctx, env="prod"):
     ctx.run(f"aws logs tail /aws/lambda/{fn} --follow --region {REGION}", pty=True)
 
 
+# ── Release utilities ─────────────────────────────────────────────────────────
+
+
+@task
+def back_merge(ctx):
+    """Open a PR to merge main back into development after a prod release."""
+    ctx.run(
+        "gh pr create"
+        " --base development"
+        " --head main"
+        " --title 'chore: merge main back to development'"
+        " --body 'Back-merge after prod release. Merge using **merge commit** (not squash).'",
+        pty=True,
+    )
+
+
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
 
