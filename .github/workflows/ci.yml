@@ -20,6 +20,8 @@ jobs:
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +43,16 @@ jobs:
         working-directory: backend
 
       - name: Test
-        run: uv run inv test-backend
+        run: uv run pytest --junit-xml=pytest-report.xml
+        working-directory: backend
+
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Pytest Test Report
+          path: backend/pytest-report.xml
+          reporter: java-junit
 
   frontend:
     name: Frontend (lint + test)
