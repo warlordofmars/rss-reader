@@ -67,9 +67,9 @@ export default function ArticleList({
     : "All Articles"
 
   return (
-    <div className="flex flex-col w-80 border-r shrink-0">
+    <div className="flex flex-col w-80 border-r shrink-0 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b space-y-2">
+      <div className="px-4 py-3 border-b space-y-2 shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium truncate">{feedTitle}</span>
           <Button
@@ -92,7 +92,7 @@ export default function ArticleList({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {loading && (
           <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>
         )}
