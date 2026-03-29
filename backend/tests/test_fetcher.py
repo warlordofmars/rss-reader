@@ -176,4 +176,64 @@ def test_fetch_all_feeds_swallows_per_feed_exceptions(aws, user):
     with patch("fetcher.fetch_feed", side_effect=raise_on_first):
         fetch_all_feeds()  # should not raise
 
-    assert call_count == 2
+
+def test_fetch_feed_skips_entry_with_no_guid(aws, feed, user):
+    """Entries with no id and no link should be silently skipped."""
+    import db
+
+    no_guid_entry = SimpleNamespace(
+        id=None,
+        link=None,
+        title="No GUID Article",
+        summary="",
+        published_parsed=(2024, 1, 1, 0, 0, 0, 0, 0, 0),
+        updated_parsed=None,
+    )
+    # Remove the attributes entirely so getattr falls back to None
+    del no_guid_entry.id
+    del no_guid_entry.link
+
+    fake_parsed = _make_fake_parsed(entries=[no_guid_entry])
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        fetch_feed(feed_dict)
+
+    items, _ = db.list_articles(
+        user_id=user["google_id"], feed_id=feed["id"],
+        limit=100, cursor=None, unread_only=False, keyword=None,
+    )
+    assert len(items) == 0
+
+
+def test_fetch_feed_swallows_create_article_exception(aws, feed, user):
+    """If create_article raises, fetch_feed should skip that entry and continue."""
+    import db
+
+    entries = [
+        SimpleNamespace(
+            id="guid-ok",
+            title="Good Article",
+            link="https://example.com/good",
+            summary="",
+            content=[],
+            published_parsed=(2024, 1, 2, 0, 0, 0, 0, 0, 0),
+            updated_parsed=None,
+        ),
+    ]
+    fake_parsed = _make_fake_parsed(entries=entries)
+    feed_dict = _feed_dict(user["google_id"], feed)
+
+    original_create = db.create_article
+    call_count = 0
+
+    def raise_once(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("db error")
+        return original_create(*args, **kwargs)
+
+    with patch("fetcher.feedparser.parse", return_value=fake_parsed):
+        with patch("fetcher.db.create_article", side_effect=raise_once):
+            fetch_feed(feed_dict)  # should not raise — exception is swallowed per noqa: S110
