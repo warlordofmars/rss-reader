@@ -1,16 +1,48 @@
-# React + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite single-page application for the RSS Reader. Deployed to S3 + CloudFront at [rss.warlordofmars.net](https://rss.warlordofmars.net).
 
-Currently, two official plugins are available:
+## Local dev
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+App available at `http://localhost:5173`. Requires the backend running at `http://localhost:8000` (or set `VITE_API_URL`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Or from the repo root:
 
-## Expanding the ESLint configuration
+```bash
+uv run inv dev   # starts both backend and frontend
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Environment variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VITE_API_URL` | `http://localhost:8000` | Backend API base URL |
+
+Create a `.env.local` file to override locally. In production, `VITE_API_URL` is injected at build time by CDK (`https://api.rss.warlordofmars.net`).
+
+## Commands
+
+```bash
+npm run dev      # start dev server
+npm run build    # production build → dist/
+npm run lint     # ESLint
+npm test         # Vitest
+```
+
+## Layout
+
+```text
+src/
+├── App.jsx              # root component, auth state, token handling
+├── lib/
+│   └── api.js           # API client (fetch wrapper, JWT injection)
+└── components/
+    ├── FeedSidebar.jsx  # feed list + add/delete
+    ├── ArticleList.jsx  # article list with pagination, filters
+    └── ArticleView.jsx  # article reading view
+```
