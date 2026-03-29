@@ -14,13 +14,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 All common tasks are available via `invoke` from the repo root:
 
 ```bash
-uv run inv --list          # show all tasks
-uv run inv dev             # start backend + frontend locally (Ctrl-C to stop)
-uv run inv lint            # lint everything
-uv run inv test            # run all tests
-uv run inv deploy          # deploy to AWS via CDK
-uv run inv outputs         # print CloudFormation stack outputs
-uv run inv logs            # tail Lambda CloudWatch logs
+uv run inv --list               # show all tasks
+uv run inv dev                  # start backend + frontend locally (Ctrl-C to stop)
+uv run inv lint                 # lint everything
+uv run inv test                 # run all tests
+uv run inv deploy               # deploy prod to AWS via CDK
+uv run inv deploy --env dev     # deploy dev environment
+uv run inv deploy --env <name>  # deploy arbitrary named environment
+uv run inv outputs              # print prod CloudFormation stack outputs
+uv run inv outputs --env dev    # print dev stack outputs
+uv run inv logs                 # tail prod Lambda CloudWatch logs
+uv run inv logs --env dev       # tail dev Lambda CloudWatch logs
 ```
 
 Individual tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`, `test-frontend`, `synth`, `clean`.
@@ -48,7 +52,20 @@ Individual tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`,
 
 **Infra layout (`infra/`):**
 
-- `stacks/rss_reader_stack.py` — single CDK stack defining all AWS resources
+- `stacks/rss_reader_stack.py` — single CDK stack defining all AWS resources, parameterized by `env_name`
+- `app.py` — CDK app entry point; reads `env` context to select stack name and config
+
+## Environments
+
+The stack supports arbitrary named environments. `prod` is special; everything else follows a naming convention.
+
+| env | Frontend | API |
+| --- | --- | --- |
+| `prod` | `rss.warlordofmars.net` | `api.rss.warlordofmars.net` |
+| `dev` | `rss-dev.warlordofmars.net` | `api.rss-dev.warlordofmars.net` |
+| `<name>` | `rss-<name>.warlordofmars.net` | `api.rss-<name>.warlordofmars.net` |
+
+Deploy with `uv run inv deploy --env <name>`. After first deploy of a new env, three manual steps are required — see the Deployment section in README.md.
 
 ## DynamoDB schema (single-table)
 

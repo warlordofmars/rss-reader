@@ -96,21 +96,24 @@ Backend at `http://localhost:8000`, frontend at `http://localhost:5173`.
 All common operations are available via `invoke`:
 
 ```bash
-uv run inv --list          # show all tasks
-uv run inv dev             # start backend + frontend locally
-uv run inv lint            # lint everything
-uv run inv test            # run all tests
-uv run inv deploy          # deploy to AWS
-uv run inv outputs         # show CloudFormation stack outputs
-uv run inv logs            # tail Lambda CloudWatch logs
-uv run inv clean           # remove build artifacts
+uv run inv --list               # show all tasks
+uv run inv dev                  # start backend + frontend locally
+uv run inv lint                 # lint everything
+uv run inv test                 # run all tests
+uv run inv deploy               # deploy prod to AWS
+uv run inv deploy --env <name>  # deploy a named environment
+uv run inv outputs              # show prod CloudFormation stack outputs
+uv run inv outputs --env <name> # show outputs for a named environment
+uv run inv logs                 # tail prod Lambda CloudWatch logs
+uv run inv logs --env <name>    # tail logs for a named environment
+uv run inv clean                # remove build artifacts
 ```
 
 Sub-tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`, `test-frontend`, `synth`.
 
 ## Deployment
 
-First-time setup:
+### Prod (first-time setup)
 
 ```bash
 # 1. Bootstrap CDK (once per account/region)
@@ -119,9 +122,10 @@ cd infra && uv run cdk bootstrap -c account=<account-id>
 # 2. Deploy
 uv run inv deploy
 
-# 3. Populate secrets
+# 3. Populate secrets (get AppSecretArn from outputs)
+uv run inv outputs
 aws secretsmanager put-secret-value \
-  --secret-id <AppSecretArn from outputs> \
+  --secret-id <AppSecretArn> \
   --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"..."}'
 
 # 4. Add GitHub secrets for CI/CD
@@ -129,7 +133,30 @@ aws secretsmanager put-secret-value \
 #    AWS_ACCOUNT_ID       →  your 12-digit account ID
 ```
 
-After that, every push to `main` deploys automatically.
+After that, every push to `main` deploys automatically via GitHub Actions.
+
+### Named environments (dev, jcarter, etc.)
+
+Any environment name is supported. Domains are derived automatically:
+
+- Frontend: `https://rss-<name>.warlordofmars.net`
+- API: `https://api.rss-<name>.warlordofmars.net`
+
+```bash
+# 1. Deploy
+uv run inv deploy --env <name>
+
+# 2. Populate secrets (get AppSecretArn from outputs)
+uv run inv outputs --env <name>
+aws secretsmanager put-secret-value \
+  --secret-id <AppSecretArn> \
+  --secret-string '{"GOOGLE_CLIENT_ID":"...","GOOGLE_CLIENT_SECRET":"...","JWT_SECRET":"..."}'
+
+# 3. Add OAuth redirect URI in Google Cloud Console
+#    https://api.rss-<name>.warlordofmars.net/auth/callback
+```
+
+To deploy `dev` from GitHub Actions, trigger the **Deploy Dev** workflow manually from the Actions tab. Set `AWS_DEV_DEPLOY_ROLE_ARN` in GitHub secrets to the `GitHubActionsDeployRoleArn` output from the dev stack.
 
 ## Environment Variables
 
