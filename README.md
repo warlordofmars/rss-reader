@@ -104,9 +104,11 @@ uv run inv test                 # run all tests
 uv run inv deploy               # deploy prod to AWS
 uv run inv deploy --env <name>  # deploy a named environment
 uv run inv outputs              # show prod CloudFormation stack outputs
-uv run inv outputs --env <name> # show outputs for a named environment
+uv run inv outputs --env dev    # show dev stack outputs
+uv run inv outputs --env <name> # show outputs for any named environment
 uv run inv logs                 # tail prod Lambda CloudWatch logs
-uv run inv logs --env <name>    # tail logs for a named environment
+uv run inv logs --env dev       # tail dev Lambda logs
+uv run inv logs --env <name>    # tail logs for any named environment
 uv run inv clean                # remove build artifacts
 ```
 

@@ -23,8 +23,10 @@ uv run inv deploy --env dev     # deploy dev environment
 uv run inv deploy --env <name>  # deploy arbitrary named environment
 uv run inv outputs              # print prod CloudFormation stack outputs
 uv run inv outputs --env dev    # print dev stack outputs
+uv run inv outputs --env <name> # print outputs for any named environment
 uv run inv logs                 # tail prod Lambda CloudWatch logs
 uv run inv logs --env dev       # tail dev Lambda CloudWatch logs
+uv run inv logs --env <name>    # tail logs for any named environment
 ```
 
 Individual tasks: `lint-backend`, `lint-frontend`, `lint-infra`, `test-backend`, `test-frontend`, `synth`, `clean`.
