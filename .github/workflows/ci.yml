@@ -33,6 +33,23 @@ jobs:
         run: uv run pytest -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
         working-directory: backend
 
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Backend Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          uv run coverage report --skip-covered --skip-empty 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        working-directory: backend
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 7
+
   frontend:
     name: Frontend (lint + test)
     runs-on: ubuntu-latest

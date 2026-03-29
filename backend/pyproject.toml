@@ -29,7 +29,13 @@ dev = [
 [tool.pytest.ini_options]
 # Exclude E2E tests from the default run — use `uv run inv test-e2e` instead
 testpaths = ["tests"]
-addopts = "--ignore=tests/e2e"
+addopts = "--ignore=tests/e2e --cov=. --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+omit = ["tests/*", "handler.py", "scheduler.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
 
 [tool.ruff]
 line-length = 100
