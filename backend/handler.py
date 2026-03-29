@@ -34,6 +34,10 @@ _mangum = Mangum(app, lifespan="off")
 def handler(event, context):
     # EventBridge scheduled events have source == "aws.events"
     if event.get("source") == "aws.events":
-        fetcher.fetch_all_feeds()
+        detail_type = event.get("detail-type", "")
+        if detail_type == "PruneArticles":
+            fetcher.prune_all_feeds()
+        else:
+            fetcher.fetch_all_feeds()
         return {"status": "ok"}
     return _mangum(event, context)
