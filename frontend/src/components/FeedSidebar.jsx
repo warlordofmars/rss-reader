@@ -93,11 +93,11 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
           >
             <span className="truncate flex-1 mr-1 flex items-center gap-1.5">
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger className="inline-flex items-center p-0 bg-transparent border-0 cursor-default shrink-0">
                   {feed.last_error ? (
-                    <AlertCircle className="h-3 w-3 text-destructive shrink-0 cursor-default" />
+                    <AlertCircle className="h-3 w-3 text-destructive" />
                   ) : (
-                    <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 shrink-0 cursor-default opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
                   )}
                 </TooltipTrigger>
                 <TooltipContent className="max-w-56 space-y-1">
