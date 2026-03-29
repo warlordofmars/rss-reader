@@ -49,7 +49,7 @@ ENV_CONFIG = {
 
 
 class RssReaderStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, env_name: str = "prod", **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, env_name: str = "prod", **kwargs) -> None:  # noqa: E501
         super().__init__(scope, construct_id, **kwargs)
 
         is_prod = env_name == "prod"
@@ -144,7 +144,7 @@ class RssReaderStack(Stack):
             self,
             "AppSecret",
             description=(
-                f"RSS Reader ({env_name}) secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET. "
+                f"RSS Reader ({env_name}) secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET. "  # noqa: E501
                 "Populate manually after first deploy."
             ),
             removal_policy=RemovalPolicy.RETAIN,
@@ -392,7 +392,7 @@ class RssReaderStack(Stack):
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
             ],
-            description=f"Assumed by GitHub Actions to deploy the RSS Reader CDK stack ({env_name})",
+            description=f"Assumed by GitHub Actions to deploy the RSS Reader CDK stack ({env_name})",  # noqa: E501
         )
 
         # ── Outputs ───────────────────────────────────────────────────────────
@@ -456,6 +456,6 @@ class RssReaderStack(Stack):
             self,
             "GitHubActionsDeployRoleArn",
             value=deploy_role.role_arn,
-            description="Set as AWS_DEPLOY_ROLE_ARN (prod) or AWS_DEV_DEPLOY_ROLE_ARN (dev) in GitHub Actions secrets",
+            description="Set as AWS_DEPLOY_ROLE_ARN (prod) or AWS_DEV_DEPLOY_ROLE_ARN (dev) in GitHub Actions secrets",  # noqa: E501
             export_name=export_name("GitHubActionsDeployRoleArn"),
         )
