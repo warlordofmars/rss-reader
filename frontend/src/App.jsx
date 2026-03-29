@@ -4,14 +4,16 @@ import LoginPage from "./components/LoginPage"
 import Layout from "./components/Layout"
 import AdminPage from "./components/AdminPage"
 
+const isAdmin = window.location.pathname === "/admin"
+
 export default function App() {
-  if (window.location.pathname === "/admin") return <AdminPage />
   const [token, setToken] = useState(null)
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!isAdmin)
 
   // Pick up token from URL after Google OAuth redirect
   useEffect(() => {
+    if (isAdmin) return
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get("token")
     if (urlToken) {
@@ -26,7 +28,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
+    if (isAdmin || !token) return
     api
       .getMe()
       .then(setUser)
@@ -42,6 +44,8 @@ export default function App() {
     setToken(null)
     setUser(null)
   }
+
+  if (isAdmin) return <AdminPage />
 
   if (loading) {
     return (
