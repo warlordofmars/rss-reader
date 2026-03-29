@@ -2,8 +2,10 @@ import { useEffect, useState } from "react"
 import { api } from "./lib/api"
 import LoginPage from "./components/LoginPage"
 import Layout from "./components/Layout"
+import AdminPage from "./components/AdminPage"
 
 export default function App() {
+  if (window.location.pathname === "/admin") return <AdminPage />
   const [token, setToken] = useState(null)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
