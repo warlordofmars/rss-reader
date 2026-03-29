@@ -225,6 +225,7 @@ class RssReaderStack(Stack):
                 "FRONTEND_URL": frontend_url,
                 "APP_VERSION": APP_VERSION,
                 "DASHBOARD_NAME": dashboard_name,
+                "ARTICLE_RETENTION_DAYS": "90",
                 # Enable dev-login bypass on non-prod environments only
                 **({"ALLOW_DEV_LOGIN": "true"} if not is_prod else {}),
             },
@@ -280,6 +281,20 @@ class RssReaderStack(Stack):
             description=f"Trigger RSS feed refresh every 30 minutes ({env_name})",
         )
         rule.add_target(targets.LambdaFunction(api_fn))
+
+        # ── EventBridge: daily article pruning ────────────────────────────────
+        prune_rule = events.Rule(
+            self,
+            "ArticlePruneRule",
+            schedule=events.Schedule.rate(Duration.days(1)),
+            description=f"Prune articles older than retention window ({env_name})",
+        )
+        prune_rule.add_target(
+            targets.LambdaFunction(
+                api_fn,
+                event=events.RuleTargetInput.from_object({"detail-type": "PruneArticles"}),
+            )
+        )
 
         # ── Frontend: S3 + CloudFront + Route53 ───────────────────────────────
         frontend_bucket = s3.Bucket(

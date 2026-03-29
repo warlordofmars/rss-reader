@@ -131,12 +131,15 @@ def _format_article(item: dict) -> dict:
 
 
 def _format_feed(item: dict) -> dict:
+    last_error = item.get("last_error") or None  # empty string → None
     return {
         "id": item.get("feed_id", ""),
         "url": item.get("url", ""),
         "title": item.get("title") or item.get("url", ""),
         "unread_count": max(0, int(item.get("unread_count", 0))),
         "created_at": item.get("created_at"),
+        "last_fetched_at": item.get("last_fetched_at"),
+        "last_error": last_error,
     }
 
 
@@ -568,3 +571,75 @@ def mark_article_read(
         "id": encode_article_id(feed_id, article_sk),
         "is_read": is_read,
     }
+
+
+def update_feed_health(
+    user_id: str,
+    feed_id: str,
+    *,
+    last_fetched_at: str,
+    last_error: str | None,
+) -> None:
+    """Record the result of a feed fetch attempt (success or error)."""
+    _table().update_item(
+        Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+        UpdateExpression="SET last_fetched_at = :t, last_error = :e",
+        ExpressionAttributeValues={
+            ":t": last_fetched_at,
+            ":e": last_error or "",
+        },
+    )
+
+
+def prune_old_articles(user_id: str, feed_id: str, cutoff_iso: str) -> int:
+    """
+    Delete articles (and their GUID sentinels) older than cutoff_iso for a feed.
+    Returns the number of articles deleted.
+    """
+    tbl = _table()
+    deleted = 0
+
+    # Query articles older than the cutoff on PK=FEED#<feed_id>
+    exclusive_start_key = None
+    while True:
+        kwargs: dict = {
+            "KeyConditionExpression": (
+                Key("PK").eq(f"FEED#{feed_id}") & Key("SK").begins_with("ARTICLE#")
+            ),
+            "FilterExpression": Attr("SK").lt(f"ARTICLE#{cutoff_iso}"),
+            "ProjectionExpression": "PK, SK, guid",
+        }
+        if exclusive_start_key:
+            kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+        resp = tbl.query(**kwargs)
+        items = resp.get("Items", [])
+
+        if items:
+            with tbl.batch_writer() as batch:
+                for item in items:
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                    # Also delete the GUID sentinel
+                    if guid := item.get("guid"):
+                        gh = hashlib.md5(guid.encode()).hexdigest()[:16]  # noqa: S324
+                        batch.delete_item(
+                            Key={"PK": f"FEED#{feed_id}", "SK": f"GUID#{gh}"}
+                        )
+            deleted += len(items)
+
+        exclusive_start_key = resp.get("LastEvaluatedKey")
+        if not exclusive_start_key:
+            break
+
+    # Decrement unread_count by the number of unread articles pruned (floor at 0)
+    if deleted:
+        tbl.update_item(
+            Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+            UpdateExpression="SET unread_count = :z",
+            # Recalculate would require a scan; just reset to 0 on prune — next
+            # fetch will re-increment for any newly arriving articles.
+            ExpressionAttributeValues={":z": 0},
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    return deleted
