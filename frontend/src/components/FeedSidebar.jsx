@@ -38,15 +38,15 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
   const totalUnread = feeds.reduce((sum, f) => sum + (f.unread_count || 0), 0)
 
   return (
-    <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0">
-      <div className="flex items-center justify-between px-4 py-3">
+    <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <span className="text-sm font-medium text-sidebar-foreground">Feeds</span>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {/* All Articles */}
         <button
           onClick={() => onSelectFeed(null)}
