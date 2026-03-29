@@ -28,6 +28,14 @@ Create a `.env.local` file to override locally. In production, `VITE_API_URL` is
 ## Commands
 
 ```bash
+uv run inv dev            # start both backend + frontend (from repo root)
+uv run inv lint-frontend  # ESLint
+uv run inv test-frontend  # Vitest
+```
+
+Or directly via npm:
+
+```bash
 npm run dev      # start dev server
 npm run build    # production build → dist/
 npm run lint     # ESLint
