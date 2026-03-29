@@ -2,7 +2,7 @@
 
 A full-stack RSS reader with Google OAuth, deployed on AWS.
 
-**Live at [rss.warlordofmars.net](https://rss.warlordofmars.net)**
+**Live at [rss.warlordofmars.net](https://rss.warlordofmars.net)** | **Dev at [rss-dev.warlordofmars.net](https://rss-dev.warlordofmars.net)**
 
 ## Stack
 
