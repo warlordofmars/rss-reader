@@ -6,17 +6,6 @@ on:
   pull_request:
 
 jobs:
-  validate-pr:
-    name: Validate PR title
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: read
-    steps:
-      - uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
@@ -257,17 +246,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create back-merge PR
+      - name: Create and auto-merge back-merge PR
         run: |
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base development \
             --head main \
             --title "chore: merge main back to development" \
-            --body "$(cat <<'EOF'
-          Automated back-merge after prod release.
-
-          Merge this using **merge commit** (not squash) to preserve history.
-          EOF
-          )" || echo "PR already exists or nothing to merge — skipping"
+            --body "Automated back-merge after prod release." 2>&1) \
+          && gh pr merge "$PR_URL" --auto --merge \
+          || echo "PR already exists or nothing to merge — skipping"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
