@@ -64,11 +64,11 @@ Two permanent branches:
 - `development` — default branch; merges auto-deploy to dev (`rss-dev.warlordofmars.net`)
 - `main` — production; merges trigger semantic-release and auto-deploy to prod (`rss.warlordofmars.net`)
 
-**Feature work:** branch from `development` → PR → `development` using **squash merge**. PR title must be a conventional commit (`feat:`, `fix:`, `chore:`, etc.) — enforced by CI.
+**Feature work:** branch from `development` → PR → `development` using **squash merge**.
 
-**Prod release:** PR from `development` → `main` using **merge commit** (not squash). This preserves all individual conventional commits so semantic-release can compute the correct version bump.
+**Prod release:** PR from `development` → `main` using **merge commit** (not squash). This preserves all individual conventional commits so semantic-release can compute the correct version bump. After merging, CI runs semantic-release, deploys to prod, then automatically opens a back-merge PR (`main` → `development`) with auto-merge enabled — it merges itself once CI passes.
 
-**Back-merge:** After every prod deploy, CI automatically opens a PR to merge `main` → `development`. Merge it with **merge commit** to keep branches in sync. Can also be triggered manually with `uv run inv back-merge`.
+**Back-merge conflicts:** If the auto back-merge PR has conflicts, resolve them on a branch → PR into `development` → back-merge will then merge cleanly. Manual trigger: `uv run inv back-merge`.
 
 **Version format:**
 
