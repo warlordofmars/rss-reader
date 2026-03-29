@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from aws_cdk import (  # noqa: I001
@@ -26,6 +27,9 @@ from constructs import Construct
 
 BACKEND_DIR = Path(__file__).parent.parent.parent / "backend"
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
+
+# Injected at deploy time by CI (e.g. "1.2.3"); falls back to "dev" locally
+APP_VERSION = os.environ.get("APP_VERSION", "dev")
 
 HOSTED_ZONE_ID = "Z3E3AQ9RR5XH0V"
 CERTIFICATE_ID = "471106fc-e3dd-4e0b-a20f-010a6e326283"
@@ -189,6 +193,7 @@ class RssReaderStack(Stack):
                 "APP_SECRET_ARN": app_secret.secret_arn,
                 "REDIRECT_URI": "https://api.rss.warlordofmars.net/auth/callback",
                 "FRONTEND_URL": "https://rss.warlordofmars.net",
+                "APP_VERSION": APP_VERSION,
             },
         )
 
@@ -307,7 +312,10 @@ class RssReaderStack(Stack):
                     exclude=["node_modules", ".venv", "dist"],
                     bundling=BundlingOptions(
                         image=DockerImage.from_registry("node:20-alpine"),
-                        environment={"VITE_API_URL": "https://api.rss.warlordofmars.net"},
+                        environment={
+                            "VITE_API_URL": "https://api.rss.warlordofmars.net",
+                            "VITE_APP_VERSION": APP_VERSION,
+                        },
                         command=[
                             "sh",
                             "-c",

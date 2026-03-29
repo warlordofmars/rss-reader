@@ -6,6 +6,15 @@ on:
   pull_request:
 
 jobs:
+  validate-pr:
+    name: Validate PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
@@ -89,13 +98,51 @@ jobs:
         env:
           AWS_ACCOUNT_ID: "123456789012"
 
-  deploy:
-    name: Deploy
+  release:
+    name: Release
     needs: [backend, frontend, infra]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # required for OIDC token
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # semantic-release needs full git history
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install semantic-release
+        run: npm ci
+
+      - name: Run semantic-release
+        id: semantic-release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: get-version
+        run: |
+          if [ -n "${{ steps.semantic-release.outputs.new_release_version }}" ]; then
+            echo "version=${{ steps.semantic-release.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    name: Deploy
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
       contents: read
 
     steps:
@@ -122,3 +169,4 @@ jobs:
         run: uv run inv deploy
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          APP_VERSION: ${{ needs.release.outputs.version }}

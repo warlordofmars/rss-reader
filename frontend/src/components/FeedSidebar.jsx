@@ -106,6 +106,12 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
         onOpenChange={setDialogOpen}
         onFeedAdded={handleFeedAdded}
       />
+
+      <div className="px-4 py-2 border-t">
+        <span className="text-xs text-muted-foreground">
+          v{import.meta.env.VITE_APP_VERSION ?? "dev"}
+        </span>
+      </div>
     </aside>
   )
 }
