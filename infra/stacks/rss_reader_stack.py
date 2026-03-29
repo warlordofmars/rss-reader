@@ -35,17 +35,7 @@ HOSTED_ZONE_ID = "Z3E3AQ9RR5XH0V"
 CERTIFICATE_ID = "471106fc-e3dd-4e0b-a20f-010a6e326283"
 GITHUB_REPO = "warlordofmars/rss-reader"  # org/repo for OIDC trust policy
 
-# Per-environment config
-ENV_CONFIG = {
-    "prod": {
-        "frontend_domain": "rss.warlordofmars.net",
-        "api_domain": "api.rss.warlordofmars.net",
-    },
-    "dev": {
-        "frontend_domain": "rss-dev.warlordofmars.net",
-        "api_domain": "api.rss-dev.warlordofmars.net",
-    },
-}
+DOMAIN_BASE = "warlordofmars.net"
 
 
 class RssReaderStack(Stack):
@@ -53,9 +43,12 @@ class RssReaderStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         is_prod = env_name == "prod"
-        cfg = ENV_CONFIG[env_name]
-        frontend_domain = cfg["frontend_domain"]
-        api_domain = cfg["api_domain"]
+        if is_prod:
+            frontend_domain = f"rss.{DOMAIN_BASE}"
+            api_domain = f"api.rss.{DOMAIN_BASE}"
+        else:
+            frontend_domain = f"rss-{env_name}.{DOMAIN_BASE}"
+            api_domain = f"api.rss-{env_name}.{DOMAIN_BASE}"
         frontend_url = f"https://{frontend_domain}"
         api_url = f"https://{api_domain}"
 
