@@ -8,7 +8,6 @@ credentials work.
 """
 
 import httpx
-import pytest
 
 
 def test_version(base_url):
