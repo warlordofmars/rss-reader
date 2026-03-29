@@ -190,7 +190,8 @@ def deploy(ctx, env="prod"):
     if env == "prod":
         version = os.environ.get("APP_VERSION", "dev")
     else:
-        version = f"{_infer_next_version(ctx)}-{env}"
+        short_sha = ctx.run("git rev-parse --short HEAD", hide=True).stdout.strip()
+        version = f"{_infer_next_version(ctx)}-{env}.{short_sha}"
     with ctx.cd(INFRA):
         ctx.run(
             f"uv run cdk deploy {stack} --require-approval never"
