@@ -34,12 +34,37 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEV_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Resolve version
+      - name: Infer next version
         id: get-version
         run: |
-          echo "version=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 'dev')" >> $GITHUB_OUTPUT
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Analyze commits since last tag using conventional commit rules
+          COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:"%s" 2>/dev/null || true)
+
+          BUMP="none"
+          while IFS= read -r msg; do
+            if echo "$msg" | grep -qE "^[a-z]+(\(.+\))?!:|BREAKING CHANGE"; then
+              BUMP="major"; break
+            elif echo "$msg" | grep -qE "^feat(\(.+\))?:"; then
+              [ "$BUMP" != "major" ] && BUMP="minor"
+            elif echo "$msg" | grep -qE "^(fix|perf)(\(.+\))?:"; then
+              [ "$BUMP" = "none" ] && BUMP="patch"
+            fi
+          done <<< "$COMMITS"
+
+          case "$BUMP" in
+            major) NEXT="$((MAJOR + 1)).0.0" ;;
+            minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            *)     NEXT="${VERSION}" ;;
+          esac
+
+          echo "version=${NEXT}-dev" >> $GITHUB_OUTPUT
 
       - name: Deploy dev stack
         run: uv run inv deploy --env dev
         env:
-          APP_VERSION: ${{ steps.get-version.outputs.version }}-dev
+          APP_VERSION: ${{ steps.get-version.outputs.version }}
