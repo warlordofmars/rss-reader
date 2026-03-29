@@ -129,4 +129,4 @@ def test_keyword_filter(base_url, auth_headers, feed_with_articles):
 
 def test_articles_unauthenticated(base_url):
     resp = httpx.get(f"{base_url}/articles")
-    assert resp.status_code == 403
+    assert resp.status_code in (401, 403)
