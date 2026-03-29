@@ -73,7 +73,43 @@ jobs:
         working-directory: frontend
 
       - name: Test
-        run: uv run inv test-frontend
+        run: npx vitest run --reporter=verbose --reporter=junit --outputFile.junit=vitest-report.xml
+        working-directory: frontend
+
+      - name: Test Report
+        if: always()
+        run: |
+          python3 - <<'PYEOF' >> $GITHUB_STEP_SUMMARY
+          import xml.etree.ElementTree as ET
+
+          tree = ET.parse("frontend/vitest-report.xml")
+          root = tree.getroot()
+          suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
+
+          total_tests = total_pass = total_fail = 0
+          rows = []
+          for suite in suites:
+              for tc in suite.findall("testcase"):
+                  failed = tc.find("failure") is not None or tc.find("error") is not None
+                  skipped = tc.find("skipped") is not None
+                  icon = "⏭️" if skipped else ("❌" if failed else "✅")
+                  rows.append((icon, tc.get("classname", ""), tc.get("name", "")))
+                  total_tests += 1
+                  if not skipped:
+                      if failed:
+                          total_fail += 1
+                      else:
+                          total_pass += 1
+
+          print("## Vitest Test Report\n")
+          print("### Summary\n")
+          print(f"- Test Results: {'✅' if total_fail == 0 else '❌'} **{total_pass} passed** · {total_fail} failed · {total_tests} total\n")
+          print("### Tests\n")
+          print("| | Suite | Test |")
+          print("| --- | --- | --- |")
+          for icon, suite, name in rows:
+              print(f"| {icon} | {suite} | {name} |")
+          PYEOF
 
   infra:
     name: Infra (lint + synth)
