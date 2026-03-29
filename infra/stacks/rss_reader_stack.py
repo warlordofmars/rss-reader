@@ -177,6 +177,8 @@ class RssReaderStack(Stack):
             validation=acm.CertificateValidation.from_dns(zone),
         )
 
+        dashboard_name = "RssReader" if is_prod else f"RssReader-{env_name}"
+
         # ── Lambda function ───────────────────────────────────────────────────
         # Bundled via Docker: pip-installs production deps then copies source .py files.
         # Requires Docker to be running during `cdk deploy`.
@@ -391,7 +393,6 @@ class RssReaderStack(Stack):
         )
 
         # ── CloudWatch Dashboard ──────────────────────────────────────────────
-        dashboard_name = "RssReader" if is_prod else f"RssReader-{env_name}"
         dashboard = cw.Dashboard(
             self,
             "Dashboard",
