@@ -29,6 +29,7 @@ describe("LoginPage", () => {
     render(<LoginPage />)
     await user.click(screen.getByRole("button", { name: /sign in with google/i }))
 
+    // VITE_API_URL is not set in tests, so falls back to localhost:8000
     expect(window.location.href).toBe("http://localhost:8000/auth/login")
 
     window.location = originalLocation
