@@ -112,6 +112,26 @@ def version():
 # ── Auth routes ────────────────────────────────────────────────────────────────
 
 
+class DevLoginRequest(BaseModel):
+    email: str
+    name: str = "Test User"
+    picture: str = ""
+
+
+@app.post("/auth/dev-login")
+def auth_dev_login(body: DevLoginRequest):
+    """
+    Dev/test-only login endpoint. Creates or upserts a user and returns a JWT.
+    Only active when ALLOW_DEV_LOGIN=true — never enabled in prod.
+    """
+    if os.getenv("ALLOW_DEV_LOGIN") != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+    google_id = f"dev-{body.email.replace('@', '-').replace('.', '-')}"
+    user = db.upsert_user(google_id, body.email, body.name, body.picture)
+    token = create_jwt(user["google_id"], user["email"])
+    return {"token": token, "user": user}
+
+
 @app.get("/auth/login")
 def auth_login():
     params = urllib.parse.urlencode(

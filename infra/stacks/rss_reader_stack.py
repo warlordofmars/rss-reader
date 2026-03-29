@@ -225,6 +225,8 @@ class RssReaderStack(Stack):
                 "FRONTEND_URL": frontend_url,
                 "APP_VERSION": APP_VERSION,
                 "DASHBOARD_NAME": dashboard_name,
+                # Enable dev-login bypass on non-prod environments only
+                **({"ALLOW_DEV_LOGIN": "true"} if not is_prod else {}),
             },
         )
 

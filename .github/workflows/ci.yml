@@ -162,6 +162,29 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
+  e2e:
+    name: E2E tests (dev)
+    needs: [deploy-dev]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+        working-directory: backend
+
+      - name: Run E2E tests
+        run: uv run pytest tests/e2e -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
+        working-directory: backend
+        env:
+          E2E_BASE_URL: https://api.rss-dev.warlordofmars.net
+          E2E_ADMIN_PASS: ${{ secrets.DEV_ADMIN_PASSWORD }}
+
   release:
     name: Release
     needs: [backend, frontend, infra]

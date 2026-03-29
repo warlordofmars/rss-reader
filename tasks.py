@@ -134,6 +134,22 @@ def test(ctx):
     """Run all tests (backend + frontend)"""
 
 
+@task
+def test_e2e(ctx, env="dev", admin_pass="admin"):
+    """Run E2E tests against a deployed environment. Use --env prod for prod."""
+    base_url = (
+        "https://api.rss.warlordofmars.net"
+        if env == "prod"
+        else f"https://api.rss-{env}.warlordofmars.net"
+    )
+    with ctx.cd(BACKEND):
+        ctx.run(
+            "uv run pytest tests/e2e -v",
+            env={"E2E_BASE_URL": base_url, "E2E_ADMIN_PASS": admin_pass},
+            pty=True,
+        )
+
+
 # ── Local dev ─────────────────────────────────────────────────────────────────
 
 
