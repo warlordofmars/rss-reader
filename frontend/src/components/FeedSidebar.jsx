@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import ReactDOM from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Plus, RefreshCw, Trash2, Rss, AlertCircle, CheckCircle2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -19,6 +19,54 @@ function formatRelativeTime(isoString) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+function FeedHealthIcon({ feed }) {
+  const [visible, setVisible] = useState(false)
+  const [coords, setCoords] = useState({ top: 0, left: 0 })
+  const triggerRef = useRef(null)
+
+  const show = () => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setCoords({ top: rect.top - 8, left: rect.right + 8 })
+    }
+    setVisible(true)
+  }
+
+  const hide = () => setVisible(false)
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        className="inline-flex shrink-0 cursor-default"
+      >
+        {feed.last_error ? (
+          <AlertCircle className="h-3 w-3 text-destructive" />
+        ) : (
+          <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+        )}
+      </span>
+
+      {visible && ReactDOM.createPortal(
+        <div
+          className="fixed z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 pointer-events-none space-y-1"
+          style={{ top: coords.top, left: coords.left, transform: "translateY(-100%)" }}
+        >
+          {feed.last_error && (
+            <p className="text-destructive font-medium break-words">{feed.last_error}</p>
+          )}
+          <p className="text-muted-foreground">
+            Fetched: {formatRelativeTime(feed.last_fetched_at)}
+          </p>
+        </div>,
+        document.body
+      )}
+    </>
+  )
 }
 
 export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFeeds }) {
@@ -51,7 +99,6 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
   const totalUnread = feeds.reduce((sum, f) => sum + (f.unread_count || 0), 0)
 
   return (
-    <TooltipProvider>
     <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <span className="text-sm font-medium text-sidebar-foreground">Feeds</span>
@@ -92,23 +139,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
             )}
           >
             <span className="truncate flex-1 mr-1 flex items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger className="inline-flex items-center p-0 bg-transparent border-0 cursor-default shrink-0">
-                  {feed.last_error ? (
-                    <AlertCircle className="h-3 w-3 text-destructive" />
-                  ) : (
-                    <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent className="max-w-56 space-y-1">
-                  {feed.last_error && (
-                    <p className="text-destructive font-medium break-words">{feed.last_error}</p>
-                  )}
-                  <p className="text-muted-foreground">
-                    Fetched: {formatRelativeTime(feed.last_fetched_at)}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
+              <FeedHealthIcon feed={feed} />
               {feed.title}
             </span>
             <div className="flex items-center gap-1">
@@ -146,6 +177,5 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
         </span>
       </div>
     </aside>
-    </TooltipProvider>
   )
 }
