@@ -20,9 +20,6 @@ jobs:
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -44,17 +41,8 @@ jobs:
         working-directory: backend
 
       - name: Test
-        run: uv run pytest -v --junit-xml=../pytest-report.xml
+        run: uv run pytest -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
         working-directory: backend
-
-      - name: Test Report
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Pytest Test Report
-          path: pytest-report.xml
-          reporter: java-junit
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   frontend:
     name: Frontend (lint + test)

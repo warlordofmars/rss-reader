@@ -23,6 +23,7 @@ dev = [
     "ruff",
     "pip-audit",
     "pytest-github-actions-annotate-failures>=0.4.0",
+    "pytest-md-report>=0.7.0",
 ]
 
 [tool.ruff]
