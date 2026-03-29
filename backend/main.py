@@ -79,6 +79,14 @@ def get_current_user(
     return user
 
 
+# ── Version ───────────────────────────────────────────────────────────────────
+
+
+@app.get("/version")
+def version():
+    return {"version": os.getenv("APP_VERSION", "dev")}
+
+
 # ── Auth routes ────────────────────────────────────────────────────────────────
 
 
