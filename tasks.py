@@ -63,6 +63,12 @@ def _infer_next_version(ctx):
         return f"{major}.{minor}.{patch + 1}"
 
 
+def _ci_pytest_args() -> str:
+    """Return --md-report flags when running in GitHub Actions."""
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    return f' --md-report --md-report-output="{summary}"' if summary else ""
+
+
 def _aws_account(ctx):
     # Allow override via env var — used in CI synth where no credentials are present
     if account := os.environ.get("AWS_ACCOUNT_ID"):
@@ -112,6 +118,29 @@ def lint(ctx):
     """Lint everything (backend + frontend + infra)"""
 
 
+# ── Audit ─────────────────────────────────────────────────────────────────────
+
+
+@task
+def audit_backend(ctx):
+    """Security audit backend dependencies (pip-audit)"""
+    # CVE-2026-4539: affects pygments (transitive dep of pip-audit itself), no fix available yet
+    with ctx.cd(BACKEND):
+        ctx.run("uv run pip-audit --ignore-vuln CVE-2026-4539", pty=True)
+
+
+@task
+def audit_frontend(ctx):
+    """Security audit frontend dependencies (npm audit)"""
+    with ctx.cd(FRONTEND):
+        ctx.run("npm audit --audit-level=high", pty=True)
+
+
+@task(audit_backend, audit_frontend)
+def audit(ctx):
+    """Audit all dependencies (backend + frontend)"""
+
+
 # ── Test ──────────────────────────────────────────────────────────────────────
 
 
@@ -119,14 +148,20 @@ def lint(ctx):
 def test_backend(ctx):
     """Run backend tests with pytest"""
     with ctx.cd(BACKEND):
-        ctx.run("uv run pytest -v", pty=True)
+        ctx.run(f"uv run pytest -v{_ci_pytest_args()}", pty=True)
 
 
 @task
 def test_frontend(ctx):
     """Run frontend tests"""
+    ci = bool(os.environ.get("CI"))
+    extra = (
+        " -- --reporter=verbose --reporter=junit --outputFile.junit=vitest-report.xml"
+        if ci
+        else ""
+    )
     with ctx.cd(FRONTEND):
-        ctx.run("npm test", pty=True)
+        ctx.run(f"npm test{extra}", pty=not ci)
 
 
 @task(test_backend, test_frontend)
@@ -208,7 +243,7 @@ def test_e2e(ctx, env="dev", admin_pass="admin"):
     )
     with ctx.cd(BACKEND):
         ctx.run(
-            "uv run pytest tests/e2e -v",
+            f"uv run pytest tests/e2e -v{_ci_pytest_args()}",
             env={"E2E_BASE_URL": base_url, "E2E_ADMIN_PASS": admin_pass},
             pty=True,
         )
@@ -224,7 +259,7 @@ def smoke(ctx, env="prod", admin_pass="admin"):
     )
     with ctx.cd(BACKEND):
         ctx.run(
-            "uv run pytest tests/e2e/test_smoke.py -v",
+            f"uv run pytest tests/e2e/test_smoke.py -v{_ci_pytest_args()}",
             env={
                 "E2E_BASE_URL": base_url,
                 "E2E_ADMIN_PASS": admin_pass,
@@ -325,14 +360,21 @@ def logs(ctx, env="prod"):
 @task
 def back_merge(ctx):
     """Open a PR to merge main back into development after a prod release."""
-    ctx.run(
+    result = ctx.run(
         "gh pr create"
         " --base development"
         " --head main"
         " --title 'chore: merge main back to development'"
         " --body 'Back-merge after prod release. Merge using **merge commit** (not squash).'",
-        pty=True,
+        warn=True,
+        hide="both",
     )
+    if result.ok:
+        pr_url = result.stdout.strip().splitlines()[-1]
+        print(f"PR created: {pr_url}")
+        ctx.run(f"gh pr merge '{pr_url}' --auto --merge", warn=True)
+    else:
+        print("PR already exists or nothing to merge — skipping")
 
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
