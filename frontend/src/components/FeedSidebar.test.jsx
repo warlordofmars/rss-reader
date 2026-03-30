@@ -108,13 +108,7 @@ describe("FeedSidebar", () => {
     const feedRow = screen.getByText("Healthy Feed").closest(".group")
     fireEvent.mouseEnter(feedRow)
 
-    // Find delete button via its SVG (Trash2) — it's hidden via CSS but still in DOM
-    const deleteButtons = document.querySelectorAll("button[class*='group-hover']")
-    // The delete button is the second one (after refresh)
-    const deleteBtn = Array.from(deleteButtons).find(
-      (btn) => btn.closest(".group") === feedRow && btn.querySelector("svg") && btn.querySelector("svg").classList.toString().includes("Trash") === false
-    )
-    // Just click the last group-hover button in that row (delete is 2nd)
+    // Click the last group-hover button in that row (delete is 2nd, after refresh)
     const rowButtons = Array.from(feedRow.querySelectorAll("button[class*='group-hover']"))
     fireEvent.click(rowButtons[rowButtons.length - 1])
 
