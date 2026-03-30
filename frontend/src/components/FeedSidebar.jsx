@@ -28,13 +28,18 @@ function FeedHealthIcon({ feed }) {
 
   const show = () => {
     const rect = triggerRef.current?.getBoundingClientRect()
+    console.log("[FeedHealthIcon] mouseenter", feed.title, rect)
     if (rect) {
-      setCoords({ top: rect.top - 8, left: rect.right + 8 })
+      // Position to the right of the sidebar, vertically centered on the icon
+      setCoords({ top: rect.top + rect.height / 2, left: rect.right + 12 })
     }
     setVisible(true)
   }
 
-  const hide = () => setVisible(false)
+  const hide = () => {
+    console.log("[FeedHealthIcon] mouseleave", feed.title)
+    setVisible(false)
+  }
 
   return (
     <>
@@ -42,6 +47,7 @@ function FeedHealthIcon({ feed }) {
         ref={triggerRef}
         onMouseEnter={show}
         onMouseLeave={hide}
+        data-feed-health={feed.last_error ? "error" : "healthy"}
         className="inline-flex shrink-0 cursor-default"
       >
         {feed.last_error ? (
@@ -54,7 +60,7 @@ function FeedHealthIcon({ feed }) {
       {visible && ReactDOM.createPortal(
         <div
           className="fixed z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 pointer-events-none space-y-1"
-          style={{ top: coords.top, left: coords.left, transform: "translateY(-100%)" }}
+          style={{ top: coords.top, left: coords.left, transform: "translateY(-50%)" }}
         >
           {feed.last_error && (
             <p className="text-destructive font-medium break-words">{feed.last_error}</p>
