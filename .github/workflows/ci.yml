@@ -204,7 +204,7 @@ jobs:
 
   browser-e2e:
     name: Browser E2E tests (dev)
-    needs: [deploy-dev]
+    needs: [deploy-dev, e2e]
     runs-on: ubuntu-latest
 
     steps:
