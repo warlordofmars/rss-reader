@@ -103,7 +103,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
     <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <span className="text-sm font-medium text-sidebar-foreground">Feeds</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDialogOpen(true)}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Add feed" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
