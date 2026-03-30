@@ -4,7 +4,11 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def cleanup_feeds(base_url, auth_headers):
-    """Delete any feeds created during the test."""
+    """Wipe all feeds before each test; track any created for post-test cleanup."""
+    resp = httpx.get(f"{base_url}/feeds", headers=auth_headers)
+    if resp.status_code == 200:
+        for feed in resp.json():
+            httpx.delete(f"{base_url}/feeds/{feed['id']}", headers=auth_headers)
     created = []
     yield created
     for feed_id in created:

@@ -218,6 +218,7 @@ def check_feed_url_exists(user_id: str, url: str) -> bool:
     resp = _table().query(
         KeyConditionExpression=Key("PK").eq(f"USER#{user_id}") & Key("SK").begins_with("FEED#"),
         FilterExpression=Attr("url").eq(url),
+        ConsistentRead=True,
     )
     return len(resp.get("Items", [])) > 0
 
