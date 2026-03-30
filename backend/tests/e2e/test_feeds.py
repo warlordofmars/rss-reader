@@ -44,10 +44,9 @@ def test_add_and_delete_feed(base_url, auth_headers, cleanup_feeds):
     assert resp.status_code == 204
     cleanup_feeds.remove(feed["id"])
 
-    # Gone from list
-    resp = httpx.get(f"{base_url}/feeds", headers=auth_headers)
-    ids = [f["id"] for f in resp.json()]
-    assert feed["id"] not in ids
+    # Confirm gone — second delete must return 404
+    resp = httpx.delete(f"{base_url}/feeds/{feed['id']}", headers=auth_headers)
+    assert resp.status_code == 404
 
 
 def test_add_duplicate_feed(base_url, auth_headers, cleanup_feeds):
