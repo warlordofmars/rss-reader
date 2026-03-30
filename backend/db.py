@@ -186,7 +186,9 @@ def list_feeds(user_id: str) -> list[dict]:
     exclusive_start_key = None
     while True:
         kwargs: dict = {
-            "KeyConditionExpression": Key("PK").eq(f"USER#{user_id}") & Key("SK").begins_with("FEED#"),
+            "KeyConditionExpression": (
+                Key("PK").eq(f"USER#{user_id}") & Key("SK").begins_with("FEED#")
+            ),
             "ConsistentRead": True,
         }
         if exclusive_start_key:
