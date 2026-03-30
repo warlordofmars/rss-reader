@@ -181,10 +181,24 @@ def upsert_user(google_id: str, email: str, name: str, picture: str) -> dict:
 
 
 def list_feeds(user_id: str) -> list[dict]:
-    resp = _table().query(
-        KeyConditionExpression=Key("PK").eq(f"USER#{user_id}") & Key("SK").begins_with("FEED#")
-    )
-    return [_format_feed(_from_ddb(i)) for i in resp.get("Items", [])]
+    tbl = _table()
+    items = []
+    exclusive_start_key = None
+    while True:
+        kwargs: dict = {
+            "KeyConditionExpression": (
+                Key("PK").eq(f"USER#{user_id}") & Key("SK").begins_with("FEED#")
+            ),
+            "ConsistentRead": True,
+        }
+        if exclusive_start_key:
+            kwargs["ExclusiveStartKey"] = exclusive_start_key
+        resp = tbl.query(**kwargs)
+        items.extend(resp.get("Items", []))
+        exclusive_start_key = resp.get("LastEvaluatedKey")
+        if not exclusive_start_key:
+            break
+    return [_format_feed(_from_ddb(i)) for i in items]
 
 
 def get_feed(user_id: str, feed_id: str) -> dict | None:

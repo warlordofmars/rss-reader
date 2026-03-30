@@ -50,3 +50,14 @@ def auth_headers(dev_user):
 def e2e_user(dev_user):
     _, user = dev_user
     return user
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_all_feeds(base_url, dev_user):
+    """Delete all feeds for the e2e test user before the session starts."""
+    headers, _ = dev_user
+    resp = httpx.get(f"{base_url}/feeds", headers=headers)
+    if resp.status_code == 200:
+        for feed in resp.json():
+            httpx.delete(f"{base_url}/feeds/{feed['id']}", headers=headers)
+    yield
