@@ -247,11 +247,16 @@ def create_feed(user_id: str, url: str, title: str = "") -> dict:
 
 
 def update_feed_title(user_id: str, feed_id: str, title: str) -> None:
-    _table().update_item(
-        Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
-        UpdateExpression="SET title = :t",
-        ExpressionAttributeValues={":t": title},
-    )
+    try:
+        _table().update_item(
+            Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+            UpdateExpression="SET title = :t",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":t": title},
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
 
 def delete_feed(user_id: str, feed_id: str) -> None:
@@ -376,12 +381,17 @@ def create_article(
         if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
             raise
 
-    # Increment unread_count on the feed
-    tbl.update_item(
-        Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
-        UpdateExpression="ADD unread_count :one",
-        ExpressionAttributeValues={":one": 1},
-    )
+    # Increment unread_count on the feed (skip if feed was deleted mid-fetch)
+    try:
+        tbl.update_item(
+            Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+            UpdateExpression="ADD unread_count :one",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":one": 1},
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
 
 def list_articles(
@@ -602,14 +612,19 @@ def update_feed_health(
     last_error: str | None,
 ) -> None:
     """Record the result of a feed fetch attempt (success or error)."""
-    _table().update_item(
-        Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
-        UpdateExpression="SET last_fetched_at = :t, last_error = :e",
-        ExpressionAttributeValues={
-            ":t": last_fetched_at,
-            ":e": last_error or "",
-        },
-    )
+    try:
+        _table().update_item(
+            Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+            UpdateExpression="SET last_fetched_at = :t, last_error = :e",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={
+                ":t": last_fetched_at,
+                ":e": last_error or "",
+            },
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
 
 def prune_old_articles(user_id: str, feed_id: str, cutoff_iso: str) -> int:
