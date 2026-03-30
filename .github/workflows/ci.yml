@@ -5,10 +5,15 @@ on:
     branches: [main, development]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (lint + test)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v6
@@ -25,22 +30,10 @@ jobs:
         run: uv run inv lint-backend
 
       - name: Security audit (pip-audit)
-        # CVE-2026-4539: affects pygments (transitive dep of pip-audit itself), no fix available yet
-        run: uv run pip-audit --ignore-vuln CVE-2026-4539
-        working-directory: backend
+        run: uv run inv audit-backend
 
       - name: Test
-        run: uv run pytest -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
-        working-directory: backend
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          echo "## Backend Coverage" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          uv run coverage report --skip-covered --skip-empty 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        working-directory: backend
+        run: uv run inv test-backend
 
       - name: Upload coverage report
         if: always()
@@ -53,6 +46,7 @@ jobs:
   frontend:
     name: Frontend (lint + test)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v6
@@ -75,12 +69,10 @@ jobs:
         run: uv run inv lint-frontend
 
       - name: Security audit (npm audit)
-        run: npm audit --audit-level=high
-        working-directory: frontend
+        run: uv run inv audit-frontend
 
       - name: Test
-        run: npx vitest run --reporter=verbose --reporter=junit --outputFile.junit=vitest-report.xml
-        working-directory: frontend
+        run: uv run inv test-frontend
 
       - name: Test Report
         if: always()
@@ -120,6 +112,7 @@ jobs:
   infra:
     name: Infra (lint + synth)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v6
@@ -148,6 +141,7 @@ jobs:
     needs: [backend, frontend, infra]
     if: github.ref == 'refs/heads/development' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       id-token: write
       contents: read
@@ -183,6 +177,7 @@ jobs:
     name: E2E tests (dev)
     needs: [deploy-dev]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v6
@@ -196,19 +191,20 @@ jobs:
         working-directory: backend
 
       - name: Run E2E tests
-        run: uv run pytest tests/e2e -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
-        working-directory: backend
-        env:
-          E2E_BASE_URL: https://api.rss-dev.warlordofmars.net
-          E2E_ADMIN_PASS: ${{ secrets.DEV_ADMIN_PASSWORD || 'admin' }}
+        run: uv run inv test-e2e --env dev --admin-pass "${{ secrets.DEV_ADMIN_PASSWORD || 'admin' }}"
 
   browser-e2e:
     name: Browser E2E tests (dev)
     needs: [deploy-dev, e2e]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
 
       - uses: actions/setup-node@v6
         with:
@@ -220,21 +216,75 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
         working-directory: frontend
 
-      - name: Run Playwright tests
-        run: npx playwright test
+      - name: Install Playwright system deps (cached browsers)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
         working-directory: frontend
+
+      - name: Run Playwright tests
+        run: uv run inv playwright --env dev --admin-email "${{ secrets.DEV_E2E_EMAIL || 'e2e@test.com' }}"
         env:
-          E2E_FRONTEND_URL: https://rss-dev.warlordofmars.net
-          E2E_API_URL: https://api.rss-dev.warlordofmars.net
-          E2E_ADMIN_EMAIL: ${{ secrets.DEV_E2E_EMAIL || 'e2e@test.com' }}
           CI: "true"
 
+      - name: Playwright step summary
+        if: always()
+        run: |
+          python3 - <<'PYEOF' >> $GITHUB_STEP_SUMMARY
+          import json, pathlib
+
+          path = pathlib.Path("frontend/playwright-report/results.json")
+          if not path.exists():
+              print("## Playwright Test Report\n\n_No results found._")
+              exit()
+
+          data = json.loads(path.read_text())
+          suites = data.get("suites", [])
+
+          rows = []
+          def walk(suite, prefix=""):
+              title = suite.get("title", "")
+              full = f"{prefix}{title}" if not prefix else f"{prefix} › {title}"
+              for spec in suite.get("specs", []):
+                  for test in spec.get("tests", []):
+                      status = test.get("status", "unknown")
+                      results = test.get("results", [])
+                      outcome = results[-1].get("status", status) if results else status
+                      icon = {"passed": "✅", "failed": "❌", "skipped": "⏭️", "flaky": "⚠️"}.get(outcome, "❓")
+                      rows.append((icon, full, spec.get("title", "")))
+              for child in suite.get("suites", []):
+                  walk(child, full)
+
+          for suite in suites:
+              walk(suite)
+
+          passed = sum(1 for r in rows if r[0] == "✅")
+          failed = sum(1 for r in rows if r[0] == "❌")
+          skipped = sum(1 for r in rows if r[0] == "⏭️")
+          flaky = sum(1 for r in rows if r[0] == "⚠️")
+          overall = "✅" if failed == 0 else "❌"
+
+          print("## Playwright Test Report\n")
+          print(f"**{overall} {passed} passed · {failed} failed · {skipped} skipped{' · ' + str(flaky) + ' flaky' if flaky else ''}**\n")
+          print("| | Suite | Test |")
+          print("| --- | --- | --- |")
+          for icon, suite, test in rows:
+              print(f"| {icon} | {suite} | {test} |")
+          PYEOF
+
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -246,6 +296,7 @@ jobs:
     needs: [backend, frontend, infra]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       issues: write
@@ -320,6 +371,7 @@ jobs:
     name: Deploy
     needs: [release]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       id-token: write
       contents: read
@@ -354,6 +406,7 @@ jobs:
     name: Smoke tests (prod)
     needs: [deploy]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
@@ -367,17 +420,13 @@ jobs:
         working-directory: backend
 
       - name: Run smoke tests
-        run: uv run pytest tests/e2e/test_smoke.py -v --md-report --md-report-output="$GITHUB_STEP_SUMMARY"
-        working-directory: backend
-        env:
-          E2E_BASE_URL: https://api.rss.warlordofmars.net
-          E2E_ADMIN_PASS: ${{ secrets.PROD_ADMIN_PASSWORD || 'admin' }}
-          E2E_EXPECT_INFRA_LINKS: "true"
+        run: uv run inv smoke --admin-pass "${{ secrets.PROD_ADMIN_PASSWORD || 'admin' }}"
 
   back-merge:
     name: Open back-merge PR (main → development)
     needs: [smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
@@ -385,14 +434,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
       - name: Create and auto-merge back-merge PR
-        run: |
-          PR_URL=$(gh pr create \
-            --base development \
-            --head main \
-            --title "chore: merge main back to development" \
-            --body "Automated back-merge after prod release." 2>&1) \
-          && gh pr merge "$PR_URL" --auto --merge \
-          || echo "PR already exists or nothing to merge — skipping"
+        run: uv run inv back-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

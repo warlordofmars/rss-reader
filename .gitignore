@@ -40,3 +40,6 @@ Thumbs.db
 cdk.out/
 infra/.venv/
 infra/cdk.context.json
+
+# Test artifacts
+backend/coverage.xml
