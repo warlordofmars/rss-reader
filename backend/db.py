@@ -202,7 +202,10 @@ def list_feeds(user_id: str) -> list[dict]:
 
 
 def get_feed(user_id: str, feed_id: str) -> dict | None:
-    resp = _table().get_item(Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"})
+    resp = _table().get_item(
+        Key={"PK": f"USER#{user_id}", "SK": f"FEED#{feed_id}"},
+        ConsistentRead=True,
+    )
     item = resp.get("Item")
     return _format_feed(_from_ddb(item)) if item else None
 
