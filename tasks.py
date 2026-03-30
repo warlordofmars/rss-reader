@@ -135,6 +135,70 @@ def test(ctx):
 
 
 @task
+def playwright(ctx, env=None, admin_email="e2e@test.com"):
+    """Run Playwright browser E2E tests. Defaults to localhost; use --env dev or --env prod for deployed envs."""
+    extra_env = {"E2E_ADMIN_EMAIL": admin_email}
+    if env:
+        extra_env["E2E_FRONTEND_URL"] = (
+            "https://rss.warlordofmars.net" if env == "prod" else f"https://rss-{env}.warlordofmars.net"
+        )
+        extra_env["E2E_API_URL"] = (
+            "https://api.rss.warlordofmars.net" if env == "prod" else f"https://api.rss-{env}.warlordofmars.net"
+        )
+    with ctx.cd(FRONTEND):
+        ctx.run("npx playwright test", env=extra_env, pty=True)
+
+
+@task
+def playwright_local(ctx, admin_email="e2e@test.com"):
+    """Run Playwright browser E2E tests against local dev servers (starts them automatically)."""
+    import time
+
+    procs = [
+        subprocess.Popen(
+            ["uv", "run", "uvicorn", "main:app", "--reload", "--port", "8000"],
+            cwd=BACKEND,
+        ),
+        subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=FRONTEND,
+        ),
+    ]
+
+    def _shutdown():
+        for p in procs:
+            p.terminate()
+        for p in procs:
+            p.wait()
+
+    # Wait for both servers to be ready
+    import urllib.request
+    import urllib.error
+
+    for label, url in [("backend", "http://localhost:8000/version"), ("frontend", "http://localhost:5173")]:
+        for _ in range(30):
+            try:
+                urllib.request.urlopen(url, timeout=1)
+                print(f"{label} ready")
+                break
+            except Exception:
+                time.sleep(1)
+        else:
+            _shutdown()
+            raise SystemExit(f"{label} did not start in time")
+
+    try:
+        with ctx.cd(FRONTEND):
+            ctx.run(
+                "npx playwright test",
+                env={"E2E_ADMIN_EMAIL": admin_email},
+                pty=True,
+            )
+    finally:
+        _shutdown()
+
+
+@task
 def test_e2e(ctx, env="dev", admin_pass="admin"):
     """Run E2E tests against a deployed environment. Use --env prod for prod."""
     base_url = (

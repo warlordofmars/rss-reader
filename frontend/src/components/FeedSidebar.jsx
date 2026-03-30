@@ -1,12 +1,74 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import ReactDOM from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Plus, RefreshCw, Trash2, Rss, AlertCircle } from "lucide-react"
+import { Plus, RefreshCw, Trash2, Rss, AlertCircle, CheckCircle2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import AddFeedDialog from "./AddFeedDialog"
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return "never"
+  const diff = Date.now() - new Date(isoString).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function FeedHealthIcon({ feed }) {
+  const [visible, setVisible] = useState(false)
+  const [coords, setCoords] = useState({ top: 0, left: 0 })
+  const triggerRef = useRef(null)
+
+  const show = () => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setCoords({ top: rect.top + rect.height / 2, left: rect.right + 12 })
+    }
+    setVisible(true)
+  }
+
+  const hide = () => setVisible(false)
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        data-feed-health={feed.last_error ? "error" : "healthy"}
+        className="inline-flex shrink-0 cursor-default"
+      >
+        {feed.last_error ? (
+          <AlertCircle className="h-3 w-3 text-destructive" />
+        ) : (
+          <CheckCircle2 className="h-3 w-3 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/60" />
+        )}
+      </span>
+
+      {visible && ReactDOM.createPortal(
+        <div
+          className="fixed z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 pointer-events-none space-y-1"
+          style={{ top: coords.top, left: coords.left, transform: "translateY(-50%)" }}
+        >
+          {feed.last_error && (
+            <p className="text-destructive font-medium break-words">{feed.last_error}</p>
+          )}
+          <p className="text-muted-foreground">
+            Fetched: {formatRelativeTime(feed.last_fetched_at)}
+          </p>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
 
 export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFeeds }) {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -41,7 +103,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
     <aside className="flex flex-col w-60 border-r bg-sidebar shrink-0 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
         <span className="text-sm font-medium text-sidebar-foreground">Feeds</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDialogOpen(true)}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Add feed" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -78,12 +140,7 @@ export default function FeedSidebar({ selectedFeedId, onSelectFeed, feeds, setFe
             )}
           >
             <span className="truncate flex-1 mr-1 flex items-center gap-1.5">
-              {feed.last_error && (
-                <AlertCircle
-                  className="h-3 w-3 text-destructive shrink-0"
-                  title={feed.last_error}
-                />
-              )}
+              <FeedHealthIcon feed={feed} />
               {feed.title}
             </span>
             <div className="flex items-center gap-1">
