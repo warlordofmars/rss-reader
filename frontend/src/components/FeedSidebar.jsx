@@ -28,18 +28,13 @@ function FeedHealthIcon({ feed }) {
 
   const show = () => {
     const rect = triggerRef.current?.getBoundingClientRect()
-    console.log("[FeedHealthIcon] mouseenter", feed.title, rect)
     if (rect) {
-      // Position to the right of the sidebar, vertically centered on the icon
       setCoords({ top: rect.top + rect.height / 2, left: rect.right + 12 })
     }
     setVisible(true)
   }
 
-  const hide = () => {
-    console.log("[FeedHealthIcon] mouseleave", feed.title)
-    setVisible(false)
-  }
+  const hide = () => setVisible(false)
 
   return (
     <>
@@ -53,7 +48,7 @@ function FeedHealthIcon({ feed }) {
         {feed.last_error ? (
           <AlertCircle className="h-3 w-3 text-destructive" />
         ) : (
-          <CheckCircle2 className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <CheckCircle2 className="h-3 w-3 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/60" />
         )}
       </span>
 
