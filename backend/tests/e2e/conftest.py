@@ -53,11 +53,24 @@ def e2e_user(dev_user):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_all_feeds(base_url, dev_user):
-    """Delete all feeds for the e2e test user before the session starts."""
-    headers, _ = dev_user
-    resp = httpx.get(f"{base_url}/feeds", headers=headers)
+def cleanup_all_feeds(base_url):
+    """Delete all feeds for the e2e test user before the session starts.
+
+    Skipped when ALLOW_DEV_LOGIN is unavailable (e.g. prod smoke tests).
+    """
+    import httpx as _httpx
+
+    # Attempt dev-login; skip cleanup silently if the endpoint is disabled
+    r = _httpx.post(
+        f"{base_url}/auth/dev-login",
+        json={"email": "e2e-test@example.com", "name": "E2E Test User"},
+    )
+    if r.status_code != 200:
+        yield
+        return
+    headers = {"Authorization": f"Bearer {r.json()['token']}"}
+    resp = _httpx.get(f"{base_url}/feeds", headers=headers)
     if resp.status_code == 200:
         for feed in resp.json():
-            httpx.delete(f"{base_url}/feeds/{feed['id']}", headers=headers)
+            _httpx.delete(f"{base_url}/feeds/{feed['id']}", headers=headers)
     yield
