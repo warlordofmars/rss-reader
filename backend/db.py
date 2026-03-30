@@ -131,9 +131,12 @@ def _format_article(item: dict) -> dict:
 
 
 def _format_feed(item: dict) -> dict:
+    # Fall back to extracting from SK for items that predate the feed_id attribute
+    sk = item.get("SK", "")
+    feed_id = item.get("feed_id") or (sk.split("FEED#", 1)[1] if "FEED#" in sk else "")
     last_error = item.get("last_error") or None  # empty string → None
     return {
-        "id": item.get("feed_id", ""),
+        "id": feed_id,
         "url": item.get("url", ""),
         "title": item.get("title") or item.get("url", ""),
         "unread_count": max(0, int(item.get("unread_count", 0))),
