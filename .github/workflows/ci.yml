@@ -238,6 +238,12 @@ jobs:
         env:
           CI: "true"
 
+      - name: Playwright step summary
+        if: always()
+        uses: daun/playwright-report-summary@v3
+        with:
+          report-file: frontend/playwright-report/results.json
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
